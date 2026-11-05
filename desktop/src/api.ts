@@ -19,6 +19,19 @@ export interface Boot {
   notice?: Notice | null
 }
 
+/** A newer release than the running one. */
+export interface UpdateInfo {
+  version: string
+  /** Release notes; empty when the release has none. */
+  notes: string
+}
+
+/** Payload of the `update-progress` event while an update downloads. */
+export interface UpdateProgress {
+  downloaded: number
+  total: number | null
+}
+
 export interface Notice {
   ok: boolean
   text: string
@@ -47,6 +60,12 @@ export const api = {
   hideValue: () => invoke<void>('hide_value'),
   finishPrompt: () => invoke<void>('finish_prompt'),
   openPrompt: (name: string) => invoke<void>('open_prompt', { name }),
+  /** Null when this is the latest version. */
+  checkUpdate: () => invoke<UpdateInfo | null>('check_update'),
+  /** Downloads, installs and restarts the app; it only returns if something fails. */
+  installUpdate: () => invoke<void>('install_update'),
+  /** Right after the restart that installed an update: that update, once. Null otherwise. */
+  takeInstalledUpdate: () => invoke<UpdateInfo | null>('take_installed_update'),
 }
 
 export const isWindows = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)

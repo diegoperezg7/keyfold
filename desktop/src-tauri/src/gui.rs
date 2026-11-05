@@ -10,7 +10,9 @@ use crate::tray;
 use crate::unlock::{self, SessionUnlock};
 use keyfold_core::{l10n, Config, Keyfold, SlotInfo};
 use serde::Serialize;
+use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri_plugin_updater::{Update, UpdaterExt};
 
 pub enum Mode {
     Keys,
@@ -23,6 +25,8 @@ struct AppState {
     prompt: Option<PromptRequest>,
     /// Touch ID / password before the first reveal while the keys window is open.
     unlock: SessionUnlock,
+    /// The newer release found by `check_update`, ready for `install_update`.
+    update: Mutex<Option<Update>>,
 }
 
 impl AppState {
@@ -196,6 +200,70 @@ fn hide_value(window: WebviewWindow) {
     let _ = window.set_content_protected(false);
 }
 
+#[derive(Serialize, serde::Deserialize)]
+struct UpdateInfo {
+    version: String,
+    /// Release notes ("notes" in latest.json). Empty when the release has none.
+    notes: String,
+}
+
+/// Left by `install_update` just before the restart, so the new version can say it was
+/// installed and show what changed. Read once by `take_installed_update`.
+fn installed_marker(app: &AppHandle) -> Option<std::path::PathBuf> {
+    app.path().app_config_dir().ok().map(|dir| dir.join("installed-update.json"))
+}
+
+#[derive(Serialize, Clone)]
+struct UpdateProgress {
+    downloaded: u64,
+    total: Option<u64>,
+}
+
+/// Asks the release endpoint (tauri.conf.json > plugins.updater) for a newer version.
+/// None when this is the latest one.
+#[tauri::command]
+async fn check_update(app: AppHandle, state: State<'_, AppState>) -> Result<Option<UpdateInfo>, String> {
+    let update = app.updater().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())?;
+    let info = update.as_ref().map(|u| UpdateInfo { version: u.version.clone(), notes: u.body.clone().unwrap_or_default() });
+    *state.update.lock().unwrap() = update;
+    Ok(info)
+}
+
+/// Downloads the update (reporting `update-progress` to the keys window), checks its
+/// signature against the public key in tauri.conf.json, replaces the app and restarts it.
+#[tauri::command]
+async fn install_update(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let update = state.update.lock().unwrap().clone().ok_or("no update")?;
+    let mut downloaded = 0u64;
+    update
+        .download_and_install(
+            |chunk, total| {
+                downloaded += chunk as u64;
+                let _ = app.emit_to("main", "update-progress", UpdateProgress { downloaded, total });
+            },
+            || {},
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(path) = installed_marker(&app) {
+        let info = UpdateInfo { version: update.version.clone(), notes: update.body.clone().unwrap_or_default() };
+        let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+        let _ = std::fs::write(&path, serde_json::to_string(&info).unwrap_or_default());
+    }
+    app.restart()
+}
+
+/// After the restart: the update that was just installed, once. None on a normal launch, or
+/// when the marker is from another version (the install did not take).
+#[tauri::command]
+fn take_installed_update(app: AppHandle) -> Option<UpdateInfo> {
+    let path = installed_marker(&app)?;
+    let text = std::fs::read_to_string(&path).ok()?;
+    let _ = std::fs::remove_file(&path);
+    let info: UpdateInfo = serde_json::from_str(&text).ok()?;
+    (info.version == app.package_info().version.to_string()).then_some(info)
+}
+
 /// Closes the paste window. In prompt mode that ends the process.
 #[tauri::command]
 fn finish_prompt(app: AppHandle, window: WebviewWindow, state: State<AppState>) {
@@ -240,8 +308,24 @@ pub fn run(config: Config, mode: Mode) -> i32 {
         Mode::Keys => None,
     };
     let app = tauri::Builder::default()
-        .manage(AppState { config, prompt: prompt.clone(), unlock: SessionUnlock::default() })
-        .invoke_handler(tauri::generate_handler![list_keys, create_key, assign_key, unassign_key, list_folders, unlink_folder, save_secret, reveal_value, hide_value, finish_prompt, open_prompt])
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(AppState { config, prompt: prompt.clone(), unlock: SessionUnlock::default(), update: Mutex::new(None) })
+        .invoke_handler(tauri::generate_handler![
+            list_keys,
+            create_key,
+            assign_key,
+            unassign_key,
+            list_folders,
+            unlink_folder,
+            save_secret,
+            reveal_value,
+            hide_value,
+            finish_prompt,
+            open_prompt,
+            check_update,
+            install_update,
+            take_installed_update
+        ])
         .setup(move |app| {
             let handle = &app.handle().clone();
             match &prompt {

@@ -11,6 +11,8 @@ import { RevealDialog } from '../components/RevealDialog'
 import { Segmented } from '../components/Segmented'
 import { ProjectChips } from '../components/ProjectChips'
 import { StatusPill } from '../components/StatusPill'
+import { UpdatedDialog } from '../components/UpdatedDialog'
+import { UpdateNotice } from '../components/UpdateNotice'
 import { useT, type Key } from '../i18n'
 import { counts, inProject, knownProjects, NO_PROJECT, visibleKeys, type SortKey, type StatusFilter } from '../logic'
 import { useKeys } from '../stores/keys'
@@ -210,6 +212,8 @@ export function KeysView() {
       {assigning && <AssignDialog slot={assigning} onClose={() => setAssigning(null)} />}
       {creating && <NewKeyDialog onClose={() => setCreating(false)} />}
       {revealing && <RevealDialog name={revealing} onClose={closeReveal} />}
+      <UpdateNotice />
+      <UpdatedDialog />
     </div>
   )
 }

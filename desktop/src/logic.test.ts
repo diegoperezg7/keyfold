@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { SlotInfo } from './api'
 import {
   counts,
+  downloadPercent,
   isValidKeyName,
   isValidProject,
   knownProjects,
@@ -93,5 +94,19 @@ describe('placeholder values', () => {
     for (const v of ['sk-proj-Q7vN2kLp9RtW4mZx8YcB3dFh6JsG1aEu', 'AKIAZ7QW3XN5PLR8MV2K', 'ghp_9fK2mQ7xVb4nR1tY6wL3pZ8cH5jD0sAeUgOi', '']) { // gitleaks:allow (made-up test values)
       expect(looksLikePlaceholder(v)).toBe(false)
     }
+  })
+})
+
+describe('update download', () => {
+  it('reports whole percents, capped at 100', () => {
+    expect(downloadPercent(0, 1000)).toBe(0)
+    expect(downloadPercent(456, 1000)).toBe(45)
+    expect(downloadPercent(1000, 1000)).toBe(100)
+    expect(downloadPercent(1200, 1000)).toBe(100)
+  })
+
+  it('has no percent when the server does not send the size', () => {
+    expect(downloadPercent(500, null)).toBeNull()
+    expect(downloadPercent(500, 0)).toBeNull()
   })
 })
