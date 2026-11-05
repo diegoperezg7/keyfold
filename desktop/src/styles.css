@@ -921,6 +921,10 @@ input {
   color: var(--danger);
 }
 
+.hint-warn {
+  color: var(--warn);
+}
+
 .warning {
   display: flex;
   align-items: center;

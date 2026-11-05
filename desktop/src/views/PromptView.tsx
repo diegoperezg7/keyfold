@@ -1,8 +1,9 @@
-import { Lock, ShieldAlert } from 'lucide-react'
+import { Lock, ShieldAlert, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api } from '../api'
 import { Logo } from '../components/Logo'
 import { useT } from '../i18n'
+import { looksLikePlaceholder } from '../logic'
 import { usePrompt } from '../stores/prompt'
 
 /** How long the "saved" confirmation stays before the window closes (it fades out at the end). */
@@ -24,6 +25,7 @@ export function PromptView({ name, project }: { name: string; project?: string |
   const { value, pasted, saving, failed, setValue, markPasted, submit, cancel } = usePrompt()
   const [done, setDone] = useState(false)
   const input = useRef<HTMLInputElement>(null)
+  const placeholder = looksLikePlaceholder(value)
 
   useEffect(() => {
     input.current?.focus()
@@ -98,9 +100,13 @@ export function PromptView({ name, project }: { name: string; project?: string |
         onDragStart={(e) => e.preventDefault()}
       />
 
-      <p className={failed ? 'hint hint-error' : 'hint'}>
+      <p className={failed ? 'hint hint-error' : placeholder ? 'hint hint-warn' : 'hint'}>
         {failed ? (
           t('saveError')
+        ) : placeholder ? (
+          <>
+            <TriangleAlert size={12} aria-hidden /> {t('placeholderHint')}
+          </>
         ) : value && !pasted ? (
           t('typedHint')
         ) : (

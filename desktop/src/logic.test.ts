@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { SlotInfo } from './api'
-import { counts, isValidKeyName, isValidProject, knownProjects, NO_PROJECT, normalizeKeyName, visibleKeys } from './logic'
+import {
+  counts,
+  isValidKeyName,
+  isValidProject,
+  knownProjects,
+  looksLikePlaceholder,
+  NO_PROJECT,
+  normalizeKeyName,
+  visibleKeys,
+} from './logic'
 
 const slot = (name: string, hasValue: boolean, projects: string[] = []): SlotInfo => ({
   name,
@@ -70,5 +79,19 @@ describe('new key form', () => {
     expect(isValidKeyName('KEY/2')).toBe(false)
     expect(isValidProject('search-bot')).toBe(true)
     expect(isValidProject('bad/project')).toBe(false)
+  })
+})
+
+describe('placeholder values', () => {
+  it('flags examples and values that are not random', () => {
+    for (const v of ['sk-xxxxxxxxxxxxxxxxxxxx', 'your_api_key_here', 'changeme', '<OPENAI_API_KEY>', '${EXA_API_KEY}', 'aaaaaaaaaaaaaaaa', '***']) {
+      expect(looksLikePlaceholder(v)).toBe(true)
+    }
+  })
+
+  it('does not flag keys that look random, nor an empty field', () => {
+    for (const v of ['sk-proj-Q7vN2kLp9RtW4mZx8YcB3dFh6JsG1aEu', 'AKIAZ7QW3XN5PLR8MV2K', 'ghp_9fK2mQ7xVb4nR1tY6wL3pZ8cH5jD0sAeUgOi', '']) { // gitleaks:allow (made-up test values)
+      expect(looksLikePlaceholder(v)).toBe(false)
+    }
   })
 })

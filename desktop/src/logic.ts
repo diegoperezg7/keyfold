@@ -65,3 +65,29 @@ export function isValidKeyName(name: string): boolean {
 export function isValidProject(project: string): boolean {
   return /^[A-Za-z0-9._-]+$/.test(project)
 }
+
+/**
+ * Values people put in docs and examples instead of a real key. Pattern and entropy threshold
+ * come from mcp-guard (src/core/secrets.ts).
+ */
+const PLACEHOLDER =
+  /x{4,}|X{4,}|\*{3,}|\.{3}|0{6,}|1234|abcd|example|sample|dummy|placeholder|redacted|changeme|your[_-]?|<[^>]*>|\$\{|\{\{/i
+
+/** A pasted value that is probably not a real key: a placeholder or text that is not random. */
+export function looksLikePlaceholder(value: string): boolean {
+  const v = value.trim()
+  return v !== '' && (PLACEHOLDER.test(v) || shannonEntropy(v) < 3)
+}
+
+/** Bits per character. Random base64 sits near 6, English words near 3. */
+export function shannonEntropy(s: string): number {
+  if (!s) return 0
+  const counts = new Map<string, number>()
+  for (const ch of s) counts.set(ch, (counts.get(ch) ?? 0) + 1)
+  let h = 0
+  for (const n of counts.values()) {
+    const p = n / s.length
+    h -= p * Math.log2(p)
+  }
+  return h
+}

@@ -67,6 +67,7 @@ const es = {
   savedTitle: 'Clave guardada',
   savedBody: 'Tu agente ya puede usar keyfold://{name}.',
   saveError: 'No se pudo guardar. Inténtalo de nuevo.',
+  placeholderHint: 'Esto parece un ejemplo, no una clave real. Revísalo antes de guardar.',
   typedHint: 'Escrito a mano: pulsa Guardar para confirmar. Intro solo guarda lo que pegas.',
   promptWarning: 'Pega solo claves que hayas pedido tú. Si no esperabas esta ventana, cancela.',
 } as const
@@ -137,6 +138,7 @@ const en: Record<Key, string> = {
   savedTitle: 'Key saved',
   savedBody: 'Your agent can now use keyfold://{name}.',
   saveError: 'Could not save. Try again.',
+  placeholderHint: 'This looks like an example, not a real key. Check it before saving.',
   typedHint: 'Typed by hand: click Save to confirm. Enter only saves what you paste.',
   promptWarning: 'Only paste keys you asked for. If you did not expect this window, cancel.',
 }
