@@ -73,9 +73,10 @@ pub fn show_main(app: &AppHandle, action: Option<&str>, notice: Option<&Notice>)
         .min_inner_size(600.0, 420.0)
         .center()
         .focused(true);
-    // Center the window controls in the 64 px header (.topbar).
+    // Center the window controls in the 72 px top row (.topbar). macOS measures this y a little
+    // above the buttons, so 38 lands their center at 36.
     #[cfg(target_os = "macos")]
-    let builder = builder.traffic_light_position(tauri::LogicalPosition::new(20.0, 34.0));
+    let builder = builder.traffic_light_position(tauri::LogicalPosition::new(20.0, 38.0));
     let window = unified_title_bar(builder).build()?;
     // Closing the window ends the session: the next reveal asks for Touch ID again.
     let handle = app.clone();

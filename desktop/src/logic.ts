@@ -7,11 +7,28 @@ export interface Sort {
   dir: 'asc' | 'desc'
 }
 
-/** Status filter, then case-insensitive search on name or project, then sort. */
-export function visibleKeys(keys: SlotInfo[], search: string, filter: StatusFilter, sort: Sort): SlotInfo[] {
+/** Project filter: null for every key, NO_PROJECT for keys assigned to none, or a project name. */
+export type ProjectFilter = string | null
+export const NO_PROJECT = '\u0000none'
+
+export function inProject(key: SlotInfo, project: ProjectFilter): boolean {
+  if (project === null) return true
+  if (project === NO_PROJECT) return key.projects.length === 0
+  return key.projects.includes(project)
+}
+
+/** Project filter, status filter, then case-insensitive search on name or project, then sort. */
+export function visibleKeys(
+  keys: SlotInfo[],
+  search: string,
+  filter: StatusFilter,
+  sort: Sort,
+  project: ProjectFilter = null,
+): SlotInfo[] {
   const query = search.trim().toLowerCase()
   const factor = sort.dir === 'asc' ? 1 : -1
   return keys
+    .filter((k) => inProject(k, project))
     .filter((k) => filter === 'all' || (filter === 'stored' ? k.hasValue : !k.hasValue))
     .filter(
       (k) =>

@@ -5,11 +5,13 @@ import { api, boot, type Notice, type SlotInfo } from '../api'
 import { AssignDialog } from '../components/AssignDialog'
 import { Logo } from '../components/Logo'
 import { NewKeyDialog } from '../components/NewKeyDialog'
+import { ProjectSelect } from '../components/ProjectSelect'
 import { RevealDialog } from '../components/RevealDialog'
+import { Segmented } from '../components/Segmented'
 import { ProjectChips } from '../components/ProjectChips'
 import { StatusPill } from '../components/StatusPill'
 import { useT, type Key } from '../i18n'
-import { counts, visibleKeys, type SortKey, type StatusFilter } from '../logic'
+import { counts, inProject, knownProjects, NO_PROJECT, visibleKeys, type SortKey, type StatusFilter } from '../logic'
 import { useKeys } from '../stores/keys'
 
 const FILTERS: { id: StatusFilter; label: Key }[] = [
@@ -20,7 +22,7 @@ const FILTERS: { id: StatusFilter; label: Key }[] = [
 
 export function KeysView() {
   const t = useT()
-  const { keys, loaded, loadFailed, search, filter, sort, load, setSearch, setFilter, toggleSort } = useKeys()
+  const { keys, loaded, loadFailed, search, filter, sort, project, load, setSearch, setFilter, setProject, toggleSort } = useKeys()
   const [assigning, setAssigning] = useState<SlotInfo | null>(null)
   const [revealing, setRevealing] = useState<string | null>(null)
   const [creating, setCreating] = useState(boot.action === 'new')
@@ -40,8 +42,15 @@ export function KeysView() {
     return () => clearTimeout(timer)
   }, [notice])
   const closeReveal = useCallback(() => setRevealing(null), [])
-  const total = counts(keys)
-  const rows = useMemo(() => visibleKeys(keys, search, filter, sort), [keys, search, filter, sort])
+  const projects = useMemo(() => knownProjects(keys), [keys])
+  // A project that no longer has keys (renamed, deleted) falls back to all.
+  const activeProject = project === null || project === NO_PROJECT || projects.includes(project) ? project : null
+  // Status counts follow the chosen project, so the selector tells what the list will show.
+  const total = counts(keys.filter((k) => inProject(k, activeProject)))
+  const rows = useMemo(
+    () => visibleKeys(keys, search, filter, sort, activeProject),
+    [keys, search, filter, sort, activeProject],
+  )
 
   useEffect(() => {
     load()
@@ -56,10 +65,12 @@ export function KeysView() {
     }
   }, [load])
 
+  // The subtitle describes the whole vault, whatever the filters.
+  const vault = counts(keys)
   const summary = [
-    t(total.all === 1 ? 'keysOne' : 'keysOther', { n: total.all }),
-    t(total.stored === 1 ? 'storedOne' : 'storedOther', { n: total.stored }),
-    t(total.empty === 1 ? 'emptyOne' : 'emptyOther', { n: total.empty }),
+    t(vault.all === 1 ? 'keysOne' : 'keysOther', { n: vault.all }),
+    t(vault.stored === 1 ? 'storedOne' : 'storedOther', { n: vault.stored }),
+    t(vault.empty === 1 ? 'emptyOne' : 'emptyOther', { n: vault.empty }),
   ].join(' · ')
 
   return (
@@ -113,20 +124,13 @@ export function KeysView() {
             </button>
           )}
         </label>
-        <div className="segmented" role="tablist">
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              role="tab"
-              aria-selected={filter === f.id}
-              className={filter === f.id ? 'active' : ''}
-              onClick={() => setFilter(f.id)}
-            >
-              {t(f.label)}
-              <span className="count">{total[f.id]}</span>
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label={t('colStatus')}
+          value={filter}
+          onChange={setFilter}
+          options={FILTERS.map((f) => ({ id: f.id, label: t(f.label), count: total[f.id] }))}
+        />
+        <ProjectSelect projects={projects} value={activeProject} onChange={setProject} />
       </div>
       </header>
 

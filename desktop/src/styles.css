@@ -267,12 +267,12 @@ input {
 }
 
 /* Spacing: one side margin (--gutter) everywhere, steps of 4 px. The window controls sit in
-   the top row (gui.rs centers them at y = 64 / 2). */
+   the top row (gui.rs centers them at y = 72 / 2), so a 32 px button sits 20 px from the top, like the sides. */
 .topbar {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 64px;
+  height: 72px;
   padding: 0 var(--gutter) 0 calc(var(--gutter) + var(--titlebar-inset));
 }
 
@@ -310,7 +310,9 @@ input {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 4px var(--gutter) 16px;
+  flex-wrap: wrap;
+  row-gap: 12px;
+  padding: 0 var(--gutter) 20px;
 }
 
 .logo {
@@ -341,8 +343,8 @@ input {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1;
-  max-width: 360px;
+  flex: 1 1 240px;
+  min-width: 0;
   height: 34px;
   padding: 0 12px;
   border: 1px solid var(--border);
@@ -383,9 +385,12 @@ input {
   animation: pop 0.2s var(--spring);
 }
 
-/* Segmented control: a glass capsule */
+/* Segmented control: a capsule with a glass indicator that slides between options
+   (Segmented.tsx). The spring overshoots a little, like the system controls in macOS 26. */
 .segmented {
+  position: relative;
   display: inline-flex;
+  flex: none;
   padding: 3px;
   gap: 2px;
   border-radius: 999px;
@@ -393,7 +398,28 @@ input {
   border: 1px solid var(--border);
 }
 
+.segmented-thumb {
+  position: absolute;
+  top: 3px;
+  left: 0;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--glass-strong);
+  box-shadow: var(--glass-shadow);
+  transition:
+    transform 0.42s var(--spring),
+    width 0.42s var(--spring),
+    opacity 0.2s var(--ease);
+  pointer-events: none;
+}
+
+/* While the cursor previews another option, the indicator is lighter than a selection. */
+.segmented-thumb.previewing {
+  opacity: 0.7;
+}
+
 .segmented button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -405,17 +431,59 @@ input {
   color: var(--text-muted);
   font-weight: 550;
   cursor: pointer;
-  transition: background 0.22s var(--ease), color 0.22s var(--ease), box-shadow 0.22s var(--ease);
+  transition: color 0.22s var(--ease);
 }
 
-.segmented button:hover:not(.active) {
-  color: var(--text);
-}
-
+.segmented button:hover,
 .segmented button.active {
-  background: var(--glass-strong);
   color: var(--text);
-  box-shadow: var(--glass-shadow);
+}
+
+/* Project picker: a capsule around a native select, same height as search and filters. */
+.select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  max-width: 220px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  transition: background 0.22s var(--ease), border-color 0.22s var(--ease), color 0.22s var(--ease);
+}
+
+.select:hover {
+  color: var(--text);
+}
+
+.select:focus-within {
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.select-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.select select {
+  min-width: 0;
+  max-width: 100%;
+  padding-right: 2px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
 }
 
 .count {

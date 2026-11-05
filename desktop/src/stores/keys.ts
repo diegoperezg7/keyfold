@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { api, type SlotInfo } from '../api'
-import type { Sort, SortKey, StatusFilter } from '../logic'
+import type { ProjectFilter, Sort, SortKey, StatusFilter } from '../logic'
 
 interface KeysState {
   keys: SlotInfo[]
@@ -17,6 +17,8 @@ interface KeysState {
   setSearch: (search: string) => void
   setFilter: (filter: StatusFilter) => void
   toggleSort: (key: SortKey) => void
+  project: ProjectFilter
+  setProject: (project: ProjectFilter) => void
 }
 
 export const useKeys = create<KeysState>((set, get) => ({
@@ -26,6 +28,8 @@ export const useKeys = create<KeysState>((set, get) => ({
   search: '',
   filter: 'all',
   sort: { key: 'name', dir: 'asc' },
+  project: null,
+  setProject: (project) => set({ project }),
 
   load: async () => {
     try {
