@@ -1,8 +1,11 @@
 import { listen } from '@tauri-apps/api/event'
-import { ArrowDown, ArrowUp, FolderPlus, KeyRound, Plus, RefreshCw, RotateCw, Search, ShieldCheck, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { ArrowDown, ArrowUp, Eye, FolderPlus, KeyRound, Plus, RefreshCw, RotateCw, Search, ShieldCheck, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type SlotInfo } from '../api'
 import { AssignDialog } from '../components/AssignDialog'
+import { Logo } from '../components/Logo'
+import { NewKeyDialog } from '../components/NewKeyDialog'
+import { RevealDialog } from '../components/RevealDialog'
 import { ProjectChips } from '../components/ProjectChips'
 import { StatusPill } from '../components/StatusPill'
 import { useT, type Key } from '../i18n'
@@ -19,6 +22,9 @@ export function KeysView() {
   const t = useT()
   const { keys, loaded, loadFailed, search, filter, sort, load, setSearch, setFilter, toggleSort } = useKeys()
   const [assigning, setAssigning] = useState<SlotInfo | null>(null)
+  const [revealing, setRevealing] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const closeReveal = useCallback(() => setRevealing(null), [])
   const total = counts(keys)
   const rows = useMemo(() => visibleKeys(keys, search, filter, sort), [keys, search, filter, sort])
 
@@ -45,17 +51,21 @@ export function KeysView() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark">
-            <KeyRound size={18} strokeWidth={2.2} aria-hidden />
-          </span>
+          <Logo size={40} />
           <div>
-            <h1>Llavero</h1>
+            <h1>Keyfold</h1>
             <p className="muted small">{summary}</p>
           </div>
         </div>
-        <button className="btn btn-icon" onClick={() => load()} title={t('refresh')} aria-label={t('refresh')}>
-          <RefreshCw size={16} aria-hidden />
-        </button>
+        <div className="topbar-actions">
+          <button className="btn btn-icon" onClick={() => load()} title={t('refresh')} aria-label={t('refresh')}>
+            <RefreshCw size={16} aria-hidden />
+          </button>
+          <button className="btn btn-primary" onClick={() => setCreating(true)}>
+            <Plus size={16} aria-hidden />
+            {t('newKey')}
+          </button>
+        </div>
       </header>
 
       <div className="toolbar">
@@ -132,6 +142,18 @@ export function KeysView() {
                     <FolderPlus size={14} aria-hidden />
                     {t('assignProject')}
                   </button>
+                  {slot.hasValue ? (
+                    <button
+                      className="btn btn-sm btn-icon"
+                      onClick={() => setRevealing(slot.name)}
+                      title={t('revealValue')}
+                      aria-label={t('revealValue')}
+                    >
+                      <Eye size={14} aria-hidden />
+                    </button>
+                  ) : (
+                    <span className="btn-icon-spacer" aria-hidden />
+                  )}
                 </span>
               </div>
             ))}
@@ -145,6 +167,8 @@ export function KeysView() {
       </footer>
 
       {assigning && <AssignDialog slot={assigning} onClose={() => setAssigning(null)} />}
+      {creating && <NewKeyDialog onClose={() => setCreating(false)} />}
+      {revealing && <RevealDialog name={revealing} onClose={closeReveal} />}
     </div>
   )
 }
@@ -173,9 +197,7 @@ function SortHeader(props: {
 function Empty({ title, body }: { title: string; body?: string }) {
   return (
     <div className="empty">
-      <span className="icon-badge icon-badge-lg">
-        <KeyRound size={22} aria-hidden />
-      </span>
+      <Logo size={56} />
       <h2>{title}</h2>
       {body && <p className="muted">{body}</p>}
     </div>

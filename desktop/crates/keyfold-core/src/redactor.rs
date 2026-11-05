@@ -1,4 +1,4 @@
-//! Replaces secret values in a byte stream with `[llavero:NAME]`.
+//! Replaces secret values in a byte stream with `[keyfold:NAME]`.
 //! Line-buffered so a value split across two reads is still caught.
 
 const MAX_BUFFER: usize = 64 * 1024;
@@ -14,7 +14,7 @@ impl Redactor {
         let mut list: Vec<(Vec<u8>, Vec<u8>)> = secrets
             .iter()
             .filter(|(_, value)| !value.is_empty())
-            .map(|(name, value)| (value.as_bytes().to_vec(), format!("[llavero:{name}]").into_bytes()))
+            .map(|(name, value)| (value.as_bytes().to_vec(), format!("[keyfold:{name}]").into_bytes()))
             .collect();
         list.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
         let max_value_len = list.first().map(|s| s.0.len()).unwrap_or(0);
@@ -79,7 +79,7 @@ mod tests {
         let mut out = r.feed(b"key=abc12");
         out.extend(r.feed(b"3secret\nnext "));
         out.extend(r.finish());
-        assert_eq!(String::from_utf8(out).unwrap(), "key=[llavero:EXA_API_KEY]\nnext ");
+        assert_eq!(String::from_utf8(out).unwrap(), "key=[keyfold:EXA_API_KEY]\nnext ");
     }
 
     #[test]
@@ -92,6 +92,6 @@ mod tests {
         out.extend(r.finish());
         let text = String::from_utf8(out).unwrap();
         assert!(!text.contains(value));
-        assert!(text.ends_with("[llavero:K]end"));
+        assert!(text.ends_with("[keyfold:K]end"));
     }
 }

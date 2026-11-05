@@ -1,6 +1,6 @@
 # Security
 
-Llavero's job is narrow: a key you paste must reach the OS credential store and your app's
+Keyfold's job is narrow: a key you paste must reach the OS credential store and your app's
 environment, and nothing else. In particular it must never reach your coding agent: not in tool
 results, command output, logs or files.
 
@@ -13,26 +13,27 @@ severity. Each one says whether it is **fixed**, **mitigated** or **open**.
 - **Not trusted:** the coding agent and anything it reads (it can be prompt-injected), and the
   output of programs it runs.
 - **Out of scope:** malware running as your user, or a compromised OS. Such code can read the
-  credential store the same way Llavero does.
+  credential store the same way Keyfold does.
 
 ## Findings
 
 | ID | Severity | Finding | Status |
 |---|---|---|---|
 | H1 | High | The paste window took focus while you were typing in another app. Your keystrokes landed in the field and the Enter at the end of your message saved them as the key. Seen twice in manual testing. | **Fixed.** Enter only saves a value that arrived by pasting. Typed text needs a click on Save. Covered by a test. |
-| H2 | High | A program started with `llavero run` receives the real key in its environment. If the agent controls that program, it can send the key elsewhere or print it encoded. Masking only catches the exact value. | **Open, by design.** Documented. A future proxy mode, where the app gets a placeholder and a local proxy adds the real header, would close it for HTTP APIs. |
-| H3 | High | A prompt-injected agent can call `create_secret` with a convincing name (`GITHUB_TOKEN`) to get you to paste a key it should not have, then use `llavero run` to read it. | **Mitigated.** The paste window warns: "only paste keys you asked for". Open: show which agent and project asked, and require confirmation for unusual names. |
-| M1 | Medium | After you paste, the key stays in the clipboard, where any process running as your user can read it (`pbpaste`). | **Fixed on macOS:** after saving, Llavero clears the clipboard if it still holds that exact value. Test on the real clipboard. **Open on Windows.** Clipboard history apps may already have recorded it. |
-| M2 | Medium | The UI had Tauri's `core:default` permission set, wider than it needs. | **Fixed.** Reduced to `core:event:default`. App commands return names and status only. |
-| M3 | Medium | Builds are not signed with a Developer ID or notarized. macOS ties Keychain access to each build, so every rebuild asks again. Users cannot verify where a downloaded build came from. | **Open.** Needs a Developer ID Application certificate. Until then, build from source. |
-| M4 | Medium | The agent can replace a value with `llavero set NAME --stdin`, or remove one with `llavero delete`. It cannot read values. It could swap your key for one it controls, or break your setup. | **Open.** Candidates: require the paste window for `set` on real stores, and confirmation for `delete`. |
+| H2 | High | A program started with `keyfold run` receives the real key in its environment. If the agent controls that program, it can send the key elsewhere or print it encoded. Masking only catches the exact value. | **Open, by design.** Documented. A future proxy mode, where the app gets a placeholder and a local proxy adds the real header, would close it for HTTP APIs. |
+| H3 | High | A prompt-injected agent can call `create_secret` with a convincing name (`GITHUB_TOKEN`) to get you to paste a key it should not have, then use `keyfold run` to read it. | **Mitigated.** The paste window warns: "only paste keys you asked for". Open: show which agent and project asked, and require confirmation for unusual names. |
+| M1 | Medium | After you paste, the key stays in the clipboard, where any process running as your user can read it (`pbpaste`). | **Fixed on macOS:** after saving, Keyfold clears the clipboard if it still holds that exact value. Test on the real clipboard. **Open on Windows.** Clipboard history apps may already have recorded it. |
+| M2 | Medium | The UI had Tauri's `core:default` permission set, wider than it needs. | **Fixed.** Reduced to `core:event:default`. App commands return names and status only, except the reveal button (M6). |
+| M3 | Medium | Builds were not signed with a Developer ID or notarized. macOS ties Keychain access to each build, so every rebuild asked again. Users could not verify where a downloaded build came from. | **Mitigated.** `desktop/scripts/release-macos.sh` signs the app and the DMG with a Developer ID and the hardened runtime. **Open:** notarization, which needs Apple credentials in the maintainer's keychain. |
+| M6 | Medium | The keys window can show a stored value (eye button). Anyone at your unlocked Mac can read a key, and a screenshot taken at that moment would capture it. | **Mitigated.** Only in the keys window and only on a click: refused in the paste window, and the CLI and MCP server have no equivalent. The value hides after 30 seconds and, while shown, the window is left out of screen capture. **Open:** ask for Touch ID or the account password first. |
+| M4 | Medium | The agent can replace a value with `keyfold set NAME --stdin`, or remove one with `keyfold delete`. It cannot read values. It could swap your key for one it controls, or break your setup. | **Open.** Candidates: require the paste window for `set` on real stores, and confirmation for `delete`. |
 | M5 | Medium | A Keychain item can only be updated or deleted by the binary that created it (`-25244`). Keys created by another build (or by the Swift prototype) cannot be changed from this one. | **Open.** It fails closed: no data is exposed. Workaround: delete with the original binary and paste again. |
 | L1 | Low | The registry folder was created world-readable (0755). It holds key and project names, not values. | **Fixed.** Folder 0700, file 0600. Covered by a test. |
 | L2 | Low | Every save used the same temp file name. The app, the MCP server and the CLI saving at once could clobber each other's write. | **Fixed.** Unique temp file per process and write. |
 | L3 | Low | Two simultaneous load-modify-save cycles can lose one change, such as a project assignment. | **Open.** It needs a file lock. No values are involved. |
 | L4 | Low | The paste window reports "saved" through a file in your per-user temp folder. A process running as you could fake that status. | **Open.** It only affects the status shown; the value itself is never in the file. |
 | L5 | Low | While you type, the value lives in the web view's memory as a JavaScript string, which cannot be wiped on demand. | **Accepted.** It is cleared from state on save or cancel, and the window closes right after. |
-| L6 | Low | Windows: the binary uses the console subsystem (needed for CLI and MCP), so the app opens a console window. The Credential Manager store has not been run on Windows yet. | **Open.** CI builds it; it is not yet verified by hand. |
+| L6 | Low | Windows: the binary uses the console subsystem (needed for CLI and MCP), so the app opens a console window. | **Open.** On Windows, CI runs the Credential Manager round trip and the MCP contract test, and builds the installer. The UI has not been tried by hand on Windows yet. |
 
 ## Verified properties
 

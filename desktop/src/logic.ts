@@ -33,3 +33,18 @@ export function counts(keys: SlotInfo[]) {
 export function knownProjects(keys: SlotInfo[]): string[] {
   return [...new Set(keys.flatMap((k) => k.projects))].sort()
 }
+
+/** What the user types as a key name, in the form keys use: `exa api-key` -> `EXA_API_KEY`. */
+export function normalizeKeyName(input: string): string {
+  return input.trim().toUpperCase().replace(/[\s.-]+/g, '_')
+}
+
+/** Same rule as the Rust core: uppercase letters, digits and `_`, not starting with a digit. */
+export function isValidKeyName(name: string): boolean {
+  return /^[A-Z_][A-Z0-9_]*$/.test(name)
+}
+
+/** Same rule as the Rust core. */
+export function isValidProject(project: string): boolean {
+  return /^[A-Za-z0-9._-]+$/.test(project)
+}

@@ -1,4 +1,4 @@
-//! Drives the real `llavero` binary the way a person or an agent would (CLI and MCP),
+//! Drives the real `keyfold` binary the way a person or an agent would (CLI and MCP),
 //! against the real OS credential store, isolated by a throwaway service and registry.
 //! Contract: no output ever contains a stored value.
 
@@ -23,22 +23,22 @@ impl Sandbox {
     fn new(tag: &str) -> Self {
         let id = format!("{tag}-{}-{}", std::process::id(), unique());
         Self {
-            home: std::env::temp_dir().join(format!("llavero-it-{id}")),
+            home: std::env::temp_dir().join(format!("keyfold-it-{id}")),
             service: format!("com.diego.llavero.tests.{id}"),
             outputs: vec![],
         }
     }
 
     fn cli(&mut self, args: &[&str], stdin: Option<&str>) -> Output {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_llavero"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_keyfold"))
             .args(args)
-            .env("LLAVERO_HOME", &self.home)
-            .env("LLAVERO_SERVICE", &self.service)
+            .env("KEYFOLD_HOME", &self.home)
+            .env("KEYFOLD_SERVICE", &self.service)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .expect("spawn llavero");
+            .expect("spawn keyfold");
         if let Some(input) = stdin {
             child.stdin.as_mut().unwrap().write_all(input.as_bytes()).unwrap();
         }
@@ -76,10 +76,10 @@ impl Sandbox {
 impl Drop for Sandbox {
     fn drop(&mut self) {
         for name in ["EXA_API_KEY", "OTHER_KEY"] {
-            let _ = Command::new(env!("CARGO_BIN_EXE_llavero"))
+            let _ = Command::new(env!("CARGO_BIN_EXE_keyfold"))
                 .args(["delete", name])
-                .env("LLAVERO_HOME", &self.home)
-                .env("LLAVERO_SERVICE", &self.service)
+                .env("KEYFOLD_HOME", &self.home)
+                .env("KEYFOLD_SERVICE", &self.service)
                 .output();
         }
         let _ = std::fs::remove_dir_all(&self.home);
@@ -105,7 +105,7 @@ fn create_registers_slot_without_value() {
     let mut s = Sandbox::new("create");
     let created = s.cli(&["create", "EXA_API_KEY", "--project", "demo", "--no-prompt"], None);
     assert_eq!(created.status, 0, "{}", created.err);
-    assert!(created.out.contains("llavero://EXA_API_KEY"));
+    assert!(created.out.contains("keyfold://EXA_API_KEY"));
     assert!(s.registry().contains("EXA_API_KEY"));
 
     let listed = s.cli(&["list"], None);
@@ -136,8 +136,8 @@ fn no_cli_output_contains_the_value_and_it_survives_restart() {
         None,
     );
     assert_eq!(leak.status, 0, "{}", leak.err);
-    assert!(leak.out.contains("[llavero:EXA_API_KEY]"), "child must receive the value, masked: {}", leak.out);
-    assert!(leak.err.contains("x=[llavero:EXA_API_KEY]"));
+    assert!(leak.out.contains("[keyfold:EXA_API_KEY]"), "child must receive the value, masked: {}", leak.out);
+    assert!(leak.err.contains("x=[keyfold:EXA_API_KEY]"));
 
     // Each call is a new process: this one only has the credential store to go on.
     let args = check_env_equals_stdin("EXA_API_KEY");
@@ -185,7 +185,7 @@ fn mcp_tools_never_return_the_value() {
     let mut tools: Vec<&str> = first[1]["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
     tools.sort();
     assert_eq!(tools, ["assign_secret", "create_secret", "list_secrets", "request_secret_value"]);
-    assert_eq!(first[2]["result"]["structuredContent"]["reference"], "llavero://EXA_API_KEY");
+    assert_eq!(first[2]["result"]["structuredContent"]["reference"], "keyfold://EXA_API_KEY");
 
     assert_eq!(s.cli(&["set", "EXA_API_KEY", "--stdin"], Some(&value)).status, 0);
 

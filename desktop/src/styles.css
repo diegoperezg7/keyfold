@@ -196,13 +196,29 @@ input {
   padding: 18px 24px 14px;
 }
 
+/* Keeps the action buttons aligned in rows without the reveal button. */
+.btn-icon-spacer {
+  flex: none;
+  width: 32px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .brand {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.brand-mark,
+.logo {
+  flex: none;
+  user-select: none;
+}
+
 .icon-badge {
   display: inline-grid;
   place-items: center;
@@ -329,7 +345,7 @@ input {
 .row {
   display: grid;
   /* Every row is its own grid: fixed tracks keep header and rows aligned. */
-  grid-template-columns: minmax(180px, 1.3fr) 120px minmax(140px, 1fr) 300px;
+  grid-template-columns: minmax(180px, 1.3fr) 120px minmax(140px, 1fr) 340px;
   align-items: center;
   gap: 16px;
   min-height: 56px;
@@ -535,6 +551,21 @@ input {
   letter-spacing: 0.08em;
 }
 
+.input.mono {
+  font-family: var(--mono);
+}
+
+.revealed {
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-hover);
+  font-family: var(--mono);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
 .hint {
   display: flex;
   align-items: flex-start;
@@ -584,6 +615,55 @@ input {
   padding: 24px 26px;
 }
 
+/* Paste window after a successful save: the mark draws itself, then everything fades out
+   just before the window closes (SUCCESS_MS in PromptView.tsx). */
+.prompt-success {
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  animation: rise 0.2s ease-out, leave 0.2s ease-in 1.1s forwards;
+}
+
+.success-mark {
+  margin-bottom: 6px;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.success-ring {
+  fill: var(--ok-soft);
+  stroke: var(--ok);
+  stroke-width: 3;
+  stroke-dasharray: 183;
+  stroke-dashoffset: 183;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  animation: draw 0.45s ease-out forwards;
+}
+
+.success-check {
+  stroke: var(--ok);
+  stroke-width: 4;
+  stroke-dasharray: 36;
+  stroke-dashoffset: 36;
+  animation: draw 0.3s ease-out 0.35s forwards;
+}
+
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes leave {
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
 @keyframes fade {
   from {
     opacity: 0;
@@ -599,7 +679,11 @@ input {
 
 @media (prefers-reduced-motion: reduce) {
   .overlay,
-  .dialog {
+  .dialog,
+  .prompt-success,
+  .success-ring,
+  .success-check {
     animation: none;
+    stroke-dashoffset: 0;
   }
 }

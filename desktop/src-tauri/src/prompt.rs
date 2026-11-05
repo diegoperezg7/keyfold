@@ -1,8 +1,8 @@
-//! The paste window always runs in a child process (`llavero __prompt NAME ...`), so the
+//! The paste window always runs in a child process (`keyfold __prompt NAME ...`), so the
 //! CLI and the MCP server stay headless and their stdout is never touched by the UI.
 //! The child reports "saved" through a result file; the value never travels back.
 
-use llavero_core::Config;
+use keyfold_core::Config;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -46,7 +46,7 @@ impl ChildArgs {
 pub fn request(config: &Config, name: &str, project: Option<&str>) -> bool {
     let Ok(exe) = std::env::current_exe() else { return false };
     let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-    let result_file = std::env::temp_dir().join(format!("llavero-prompt-{}-{nanos}.result", std::process::id()));
+    let result_file = std::env::temp_dir().join(format!("keyfold-prompt-{}-{nanos}.result", std::process::id()));
 
     let mut child_args: Vec<String> = vec![
         CHILD_COMMAND.into(),

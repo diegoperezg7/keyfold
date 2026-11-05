@@ -1,11 +1,12 @@
 //! Desktop UI. Two modes:
-//! - Keys: the main window listing keys (`llavero` / `llavero app`).
+//! - Keys: the main window listing keys (`keyfold` / `keyfold app`).
 //! - Prompt: only the paste window, run as a child by the CLI or the MCP server.
-//! The webview gets names, status and projects. A value only goes webview -> Rust
-//! (`save_secret`), straight into the credential store, and is never logged or returned.
+//! The webview gets names, status and projects. A value goes webview -> Rust (`save_secret`)
+//! straight into the credential store, and is never logged. The one way back is the reveal
+//! button of the keys window (`reveal_value`), on an explicit click.
 
 use crate::prompt::PromptRequest;
-use llavero_core::{l10n, Config, Llavero, SlotInfo};
+use keyfold_core::{l10n, Config, Keyfold, SlotInfo};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
@@ -21,8 +22,8 @@ struct AppState {
 }
 
 impl AppState {
-    fn llavero(&self) -> Llavero {
-        Llavero::open(&self.config)
+    fn keyfold(&self) -> Keyfold {
+        Keyfold::open(&self.config)
     }
 }
 
@@ -36,24 +37,31 @@ struct Boot<'a> {
 }
 
 fn boot_script(boot: &Boot) -> String {
-    format!("window.__LLAVERO__ = {};", serde_json::to_string(boot).unwrap_or_else(|_| "{}".into()))
+    format!("window.__KEYFOLD__ = {};", serde_json::to_string(boot).unwrap_or_else(|_| "{}".into()))
 }
 
 #[tauri::command]
 fn list_keys(state: State<AppState>) -> Result<Vec<SlotInfo>, String> {
-    state.llavero().list(None).map_err(|e| e.to_string())
+    state.keyfold().list(None).map_err(|e| e.to_string())
+}
+
+/// "New key" in the keys window: an empty slot. The value goes through the paste window.
+#[tauri::command]
+fn create_key(state: State<AppState>, name: String, project: Option<String>) -> Result<SlotInfo, String> {
+    let project = project.as_deref().map(str::trim).filter(|p| !p.is_empty());
+    state.keyfold().create_slot(name.trim(), project).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn assign_key(state: State<AppState>, name: String, project: String) -> Result<SlotInfo, String> {
-    state.llavero().assign(&name, project.trim()).map_err(|e| e.to_string())
+    state.keyfold().assign(&name, project.trim()).map_err(|e| e.to_string())
 }
 
 /// Stores the value. The value is not logged and the reply carries no value.
 #[tauri::command]
 fn save_secret(state: State<AppState>, name: String, value: String) -> Result<(), String> {
     let value = value.trim();
-    state.llavero().set_value(&name, value).map_err(|e| e.to_string())?;
+    state.keyfold().set_value(&name, value).map_err(|e| e.to_string())?;
     clear_clipboard_if_holds(value);
     if let Some(request) = &state.prompt {
         std::fs::write(&request.result_file, "saved").map_err(|e| e.to_string())?;
@@ -80,6 +88,24 @@ fn clear_clipboard_if_holds(value: &str) {
 #[cfg(not(target_os = "macos"))]
 fn clear_clipboard_if_holds(_value: &str) {}
 
+/// Reveal button of the keys window. The only path that sends a value to the webview, and
+/// only on a click there: refused in prompt mode, and the CLI and MCP have no equivalent.
+/// While a value is shown the window is left out of screen capture, so an agent running
+/// `screencapture` cannot read it. `hide_value` lifts that.
+#[tauri::command]
+fn reveal_value(window: WebviewWindow, state: State<AppState>, name: String) -> Result<Option<String>, String> {
+    if state.prompt.is_some() || window.label() != "main" {
+        return Err("not available in this window".into());
+    }
+    window.set_content_protected(true).map_err(|e| e.to_string())?;
+    state.keyfold().reveal(&name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn hide_value(window: WebviewWindow) {
+    let _ = window.set_content_protected(false);
+}
+
 /// Closes the paste window. In prompt mode that ends the process.
 #[tauri::command]
 fn finish_prompt(app: AppHandle, window: WebviewWindow, state: State<AppState>) {
@@ -105,7 +131,7 @@ fn open_prompt(app: AppHandle, name: String) -> Result<(), String> {
 fn prompt_window(app: &AppHandle, label: &str, boot: &Boot) -> tauri::Result<WebviewWindow> {
     let window = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
         .initialization_script(boot_script(boot))
-        .title("Llavero")
+        .title("Keyfold")
         .inner_size(460.0, 330.0)
         .resizable(false)
         .minimizable(false)
@@ -125,7 +151,7 @@ pub fn run(config: Config, mode: Mode) -> i32 {
     };
     let app = tauri::Builder::default()
         .manage(AppState { config, prompt: prompt.clone() })
-        .invoke_handler(tauri::generate_handler![list_keys, assign_key, save_secret, finish_prompt, open_prompt])
+        .invoke_handler(tauri::generate_handler![list_keys, create_key, assign_key, save_secret, reveal_value, hide_value, finish_prompt, open_prompt])
         .setup(move |app| {
             let handle = &app.handle().clone();
             match &prompt {
@@ -146,7 +172,7 @@ pub fn run(config: Config, mode: Mode) -> i32 {
                     let boot = Boot { view: "keys", name: None, project: None, lang: l10n::lang() };
                     let window = WebviewWindowBuilder::new(handle, "main", WebviewUrl::App("index.html".into()))
                         .initialization_script(boot_script(&boot))
-                        .title("Llavero")
+                        .title("Keyfold")
                         .inner_size(980.0, 620.0)
                         .min_inner_size(760.0, 420.0)
                         .center()
@@ -165,7 +191,7 @@ pub fn run(config: Config, mode: Mode) -> i32 {
             0
         }
         Err(e) => {
-            eprintln!("Llavero: {e}");
+            eprintln!("Keyfold: {e}");
             1
         }
     }

@@ -37,23 +37,24 @@ impl RegistryStore {
         &self.path
     }
 
-    /// `LLAVERO_HOME` overrides the location (tests). Otherwise the per-user app data folder.
+    /// `KEYFOLD_HOME` overrides the location (tests). Otherwise the per-user app data folder.
     pub fn default_directory() -> PathBuf {
-        if let Some(home) = std::env::var_os("LLAVERO_HOME").filter(|v| !v.is_empty()) {
+        if let Some(home) = std::env::var_os("KEYFOLD_HOME").filter(|v| !v.is_empty()) {
             return PathBuf::from(home);
         }
         #[cfg(target_os = "macos")]
         if let Some(home) = std::env::var_os("HOME") {
+            // Folder name of the original prototype, kept so existing registries keep working.
             return PathBuf::from(home).join("Library/Application Support/Llavero");
         }
         #[cfg(windows)]
         if let Some(appdata) = std::env::var_os("APPDATA") {
-            return PathBuf::from(appdata).join("Llavero");
+            return PathBuf::from(appdata).join("Keyfold");
         }
         if let Some(config) = std::env::var_os("XDG_CONFIG_HOME") {
-            return PathBuf::from(config).join("llavero");
+            return PathBuf::from(config).join("keyfold");
         }
-        PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config/llavero")
+        PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config/keyfold")
     }
 
     pub fn load(&self) -> io::Result<Registry> {
@@ -141,7 +142,7 @@ mod tests {
 
     #[test]
     fn save_and_load_round_trip() {
-        let dir = std::env::temp_dir().join(format!("llavero-registry-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("keyfold-registry-{}", std::process::id()));
         let store = RegistryStore::new(&dir);
         assert_eq!(store.load().unwrap(), Registry::default());
         let mut registry = Registry::default();
