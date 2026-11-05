@@ -1,6 +1,6 @@
 [package]
 name = "keyfold"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Keyfold: local key vault for coding agents (app, CLI and MCP server in one binary)."
 
