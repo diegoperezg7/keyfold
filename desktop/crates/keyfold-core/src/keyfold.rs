@@ -130,6 +130,23 @@ impl Keyfold {
         Ok(self.info(name, &registry))
     }
 
+    /// Takes a key out of a project. A project left with no keys disappears, like after `delete`.
+    /// The key and its value stay. Not assigned to that project: nothing changes.
+    pub fn unassign(&self, name: &str, project: &str) -> Result<SlotInfo, KeyfoldError> {
+        let mut registry = self.registry.load()?;
+        if !registry.secrets.contains_key(name) {
+            return Err(KeyfoldError::UnknownSecret(name.into()));
+        }
+        if let Some(names) = registry.projects.get_mut(project) {
+            names.retain(|n| n != name);
+            if names.is_empty() {
+                registry.projects.remove(project);
+            }
+            self.registry.save(&registry)?;
+        }
+        Ok(self.info(name, &registry))
+    }
+
     pub fn list(&self, project: Option<&str>) -> Result<Vec<SlotInfo>, KeyfoldError> {
         let registry = self.registry.load()?;
         let mut names: Vec<String> = match project {
@@ -311,6 +328,26 @@ mod tests {
         l.create_slot("B_KEY", Some("api")).unwrap();
         l.assign("A_KEY", "api").unwrap();
         assert_eq!(l.projects().unwrap(), vec!["api", "web"]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn unassign_removes_the_key_from_one_project_only() {
+        let (l, dir) = keyfold();
+        l.create_slot("A_KEY", Some("web")).unwrap();
+        l.create_slot("B_KEY", Some("web")).unwrap();
+        l.assign("A_KEY", "wbe").unwrap();
+        l.set_value("A_KEY", "secret-a").unwrap();
+
+        // A typo project with one key disappears once the key leaves it.
+        assert_eq!(l.unassign("A_KEY", "wbe").unwrap().projects, vec!["web"]);
+        assert_eq!(l.projects().unwrap(), vec!["web"]);
+        assert_eq!(l.unassign("A_KEY", "web").unwrap().projects, Vec::<String>::new());
+        assert_eq!(l.list(Some("web")).unwrap().iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["B_KEY"]);
+        // The key and its value stay; unknown project is a no-op; unknown key is an error.
+        assert_eq!(l.reveal("A_KEY").unwrap().as_deref(), Some("secret-a"));
+        assert!(l.unassign("A_KEY", "nowhere").unwrap().projects.is_empty());
+        assert_eq!(l.unassign("MISSING", "web"), Err(KeyfoldError::UnknownSecret("MISSING".into())));
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -688,6 +688,33 @@ input {
   cursor: pointer;
 }
 
+.chip-removable {
+  gap: 2px;
+  padding-right: 3px;
+}
+
+.chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.18s var(--ease), color 0.18s var(--ease);
+}
+
+.chip-remove:hover,
+.chip-remove:focus-visible {
+  background: var(--surface-raised);
+  color: var(--danger);
+  outline: none;
+}
+
 .chip-button:hover {
   border-color: var(--accent);
 }

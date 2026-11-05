@@ -14,6 +14,8 @@ interface KeysState {
   create: (name: string, project: string) => Promise<string | null>
   /** Returns null on success, or the error message from Rust. */
   assign: (name: string, project: string) => Promise<string | null>
+  /** Takes the key out of the project. Returns null on success, or the error message from Rust. */
+  unassign: (name: string, project: string) => Promise<string | null>
   setSearch: (search: string) => void
   setFilter: (filter: StatusFilter) => void
   toggleSort: (key: SortKey) => void
@@ -52,6 +54,16 @@ export const useKeys = create<KeysState>((set, get) => ({
   assign: async (name, project) => {
     try {
       await api.assignKey(name, project.trim())
+      await get().load()
+      return null
+    } catch (error) {
+      return String(error)
+    }
+  },
+
+  unassign: async (name, project) => {
+    try {
+      await api.unassignKey(name, project)
       await get().load()
       return null
     } catch (error) {

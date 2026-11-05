@@ -36,6 +36,7 @@ export const api = {
   listKeys: () => invoke<SlotInfo[]>('list_keys'),
   createKey: (name: string, project: string | null) => invoke<SlotInfo>('create_key', { name, project }),
   assignKey: (name: string, project: string) => invoke<SlotInfo>('assign_key', { name, project }),
+  unassignKey: (name: string, project: string) => invoke<SlotInfo>('unassign_key', { name, project }),
   /** One-way: the value goes to the credential store and nothing comes back. */
   saveSecret: (name: string, value: string) => invoke<void>('save_secret', { name, value }),
   /** Keys window only, on a click. Null when the key has no value. Call hideValue when done. */

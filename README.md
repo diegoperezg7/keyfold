@@ -170,6 +170,7 @@ None of them returns a value. They return the name, the reference, whether a val
 | `create_secret` | Create a slot, assign it to a project, open the paste window. Waits until you save or cancel |
 | `request_secret_value` | Open the paste window to add or replace the value of an existing key |
 | `assign_secret` | Make an existing key available to a project |
+| `unassign_secret` | Take a key out of a project, e.g. a misspelled one |
 
 ## Commands
 
@@ -180,6 +181,7 @@ None of them returns a value. They return the name, the reference, whether a val
 | `keyfold receive NAME` | Receive mode: create the slot if missing and open the paste window |
 | `keyfold set NAME [--stdin]` | Store or replace a value (window, or stdin) |
 | `keyfold assign NAME --project P` | Make a key available to a project |
+| `keyfold unassign NAME --project P` | Take a key out of a project (the key and its value stay) |
 | `keyfold list [--project P]` | Names, status and projects. Never values |
 | `keyfold run [--project P] -- <command>` | Run with the project's keys in the environment, output masked. Without `--project`, uses the nearest `.keyfold` |
 | `keyfold delete NAME` | Delete a key and its value |

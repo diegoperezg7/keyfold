@@ -218,7 +218,7 @@ fn mcp_tools_never_return_the_value() {
     assert_eq!(first[0]["result"]["protocolVersion"], "2025-06-18");
     let mut tools: Vec<&str> = first[1]["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
     tools.sort();
-    assert_eq!(tools, ["assign_secret", "create_secret", "list_secrets", "request_secret_value"]);
+    assert_eq!(tools, ["assign_secret", "create_secret", "list_secrets", "request_secret_value", "unassign_secret"]);
     assert_eq!(first[2]["result"]["structuredContent"]["reference"], "keyfold://EXA_API_KEY");
 
     assert_eq!(s.cli(&["set", "EXA_API_KEY", "--stdin"], Some(&value)).status, 0);
@@ -232,8 +232,9 @@ fn mcp_tools_never_return_the_value() {
         call(5, "create_secret", json!({"name":"bad name"})),
         call(6, "request_secret_value", json!({"name":"MISSING"})),
         json!({"jsonrpc":"2.0","id":7,"method":"nope/method"}),
+        call(8, "unassign_secret", json!({"name":"EXA_API_KEY","project":"other"})),
     ]);
-    assert_eq!(second.len(), 7);
+    assert_eq!(second.len(), 8);
     let listed = &second[0]["result"]["structuredContent"]["secrets"][0];
     assert_eq!(listed["hasValue"], json!(true));
     let mut fields: Vec<&String> = listed.as_object().unwrap().keys().collect();
@@ -245,6 +246,8 @@ fn mcp_tools_never_return_the_value() {
     assert_eq!(second[4]["result"]["isError"], json!(true));
     assert_eq!(second[5]["result"]["isError"], json!(true));
     assert_eq!(second[6]["error"]["code"], json!(-32601));
+    assert_eq!(second[7]["result"]["structuredContent"]["projects"], json!(["demo"]));
+    assert!(!s.registry().contains("\"other\""), "an empty project must disappear");
 
     s.assert_never_printed(&value);
 }

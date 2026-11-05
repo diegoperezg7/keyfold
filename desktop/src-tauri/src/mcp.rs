@@ -48,6 +48,15 @@ fn tools() -> Value {
                 "properties": { "name": { "type": "string" }, "project": { "type": "string" } },
                 "required": ["name", "project"]
             }
+        },
+        {
+            "name": "unassign_secret",
+            "description": "Remove a key from a project, e.g. one assigned to a misspelled project. The key and its value stay; a project left with no keys disappears.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "name": { "type": "string" }, "project": { "type": "string" } },
+                "required": ["name", "project"]
+            }
         }
     ])
 }
@@ -101,6 +110,10 @@ fn call_tool(config: &Config, l: &Keyfold, name: &str, args: &Map<String, Value>
         "assign_secret" => {
             let secret = string_arg(args, "name")?;
             Ok(slot_json(&l.assign(secret, string_arg(args, "project")?)?))
+        }
+        "unassign_secret" => {
+            let secret = string_arg(args, "name")?;
+            Ok(slot_json(&l.unassign(secret, string_arg(args, "project")?)?))
         }
         other => Err(ToolError::Message(format!("Unknown tool: {other}"))),
     }

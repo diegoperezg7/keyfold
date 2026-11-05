@@ -1,20 +1,22 @@
-import { FolderPlus } from 'lucide-react'
+import { FolderPlus, X } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { SlotInfo } from '../api'
 import { useT } from '../i18n'
 import { knownProjects } from '../logic'
 import { useKeys } from '../stores/keys'
-import { ProjectChips } from './ProjectChips'
 
 export function AssignDialog({ slot, onClose }: { slot: SlotInfo; onClose: () => void }) {
   const t = useT()
   const keys = useKeys((s) => s.keys)
   const assign = useKeys((s) => s.assign)
+  const unassign = useKeys((s) => s.unassign)
   const [project, setProject] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const input = useRef<HTMLInputElement>(null)
-  const suggestions = knownProjects(keys).filter((p) => !slot.projects.includes(p))
+  // The dialog follows the store, so a removed project leaves the chips at once.
+  const current = keys.find((k) => k.name === slot.name) ?? slot
+  const suggestions = knownProjects(keys).filter((p) => !current.projects.includes(p))
 
   useEffect(() => input.current?.focus(), [])
   useEffect(() => {
@@ -33,6 +35,14 @@ export function AssignDialog({ slot, onClose }: { slot: SlotInfo; onClose: () =>
     else onClose()
   }
 
+  async function remove(p: string) {
+    if (busy) return
+    setBusy(true)
+    const failure = await unassign(slot.name, p)
+    setBusy(false)
+    setError(failure)
+  }
+
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form className="dialog" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="assign-title">
@@ -43,10 +53,26 @@ export function AssignDialog({ slot, onClose }: { slot: SlotInfo; onClose: () =>
           <h2 id="assign-title">{t('assignTitle', { name: slot.name })}</h2>
         </div>
 
-        {slot.projects.length > 0 && (
+        {current.projects.length > 0 && (
           <div className="field-row">
             <span className="label">{t('assignedTo')}</span>
-            <ProjectChips projects={slot.projects} />
+            <span className="chips">
+              {current.projects.map((p) => (
+                <span key={p} className="chip chip-removable">
+                  {p}
+                  <button
+                    type="button"
+                    className="chip-remove"
+                    aria-label={t('removeFrom', { project: p })}
+                    title={t('removeFrom', { project: p })}
+                    disabled={busy}
+                    onClick={() => remove(p)}
+                  >
+                    <X size={12} aria-hidden />
+                  </button>
+                </span>
+              ))}
+            </span>
           </div>
         )}
 

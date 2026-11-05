@@ -47,6 +47,7 @@ pub fn run(config: &Config, argv: &[String]) -> i32 {
         "set" => set(config, &keyfold, &args),
         "receive" => receive(config, &keyfold, &args),
         "assign" => assign(&keyfold, &args),
+        "unassign" => unassign(&keyfold, &args),
         "list" => list(&keyfold, &args),
         "run" => run_command(&keyfold, &args),
         "delete" => delete(&keyfold, &args),
@@ -71,6 +72,7 @@ fn usage() -> i32 {
   keyfold set NOMBRE [--stdin]                        guarda o cambia el valor (ventana, o stdin)
   keyfold receive NOMBRE                              modo recepción: crea el hueco si falta y abre el campo seguro
   keyfold assign NOMBRE --project P                   asigna una clave existente a un proyecto
+  keyfold unassign NOMBRE --project P                 quita la clave del proyecto (la clave y su valor se quedan)
   keyfold list [--project P]                          lista nombres y estado, nunca valores
   keyfold run [--project P] -- comando [args...]      ejecuta con las claves del proyecto (salida censurada);
                                                       sin --project usa el .keyfold más cercano (una línea con el proyecto)
@@ -83,6 +85,7 @@ fn usage() -> i32 {
   keyfold set NAME [--stdin]                          store or replace the value (window, or stdin)
   keyfold receive NAME                                receive mode: create the slot if missing and open the secure field
   keyfold assign NAME --project P                     assign an existing key to a project
+  keyfold unassign NAME --project P                   remove the key from the project (the key and its value stay)
   keyfold list [--project P]                          list names and status, never values
   keyfold run [--project P] -- command [args...]      run with the project's keys (output redacted);
                                                       without --project, uses the nearest .keyfold (one line: the project)
@@ -177,6 +180,13 @@ fn assign(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
     let (Some(name), Some(project)) = (first(args), args.project.as_deref()) else { return Ok(usage()) };
     l.assign(name, project)?;
     println!("{}", t(&format!("keyfold://{name} asignada a {project}"), &format!("keyfold://{name} assigned to {project}")));
+    Ok(0)
+}
+
+fn unassign(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
+    let (Some(name), Some(project)) = (first(args), args.project.as_deref()) else { return Ok(usage()) };
+    l.unassign(name, project)?;
+    println!("{}", t(&format!("keyfold://{name} quitada de {project}"), &format!("keyfold://{name} removed from {project}")));
     Ok(0)
 }
 
