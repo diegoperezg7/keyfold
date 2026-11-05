@@ -5,6 +5,7 @@ pub mod l10n;
 mod keyfold;
 pub mod redactor;
 pub mod registry;
+mod share;
 pub mod store;
 
 pub use keyfold::{project_for_dir, Config, Keyfold, KeyfoldError, SlotInfo, PROJECT_FILE};

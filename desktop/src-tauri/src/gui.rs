@@ -195,6 +195,38 @@ async fn reveal_value(window: WebviewWindow, state: State<'_, AppState>, name: S
     state.keyfold().reveal(&name).map_err(|e| e.to_string())
 }
 
+/// This computer's public key (`age1…`), to give to whoever shares keys with you.
+#[tauri::command]
+fn public_key(state: State<AppState>) -> Result<String, String> {
+    state.keyfold().public_key().map_err(|e| e.to_string())
+}
+
+/// Encrypts `names` (all keys with a value when empty) to `recipients`. Reads values, so it
+/// asks for Touch ID every time, whatever the reveal session says; "locked" when cancelled.
+/// Only the encrypted package reaches the webview.
+#[tauri::command]
+async fn share_keys(window: WebviewWindow, state: State<'_, AppState>, names: Vec<String>, recipients: Vec<String>) -> Result<String, String> {
+    if state.prompt.is_some() || window.label() != "main" {
+        return Err("not available in this window".into());
+    }
+    let what = if names.is_empty() { l10n::t("todas tus claves", "all your keys") } else { names.join(", ") };
+    let reason = l10n::t(&format!("compartir {what} cifradas"), &format!("share {what}, encrypted"));
+    if !unlock::authenticate(&reason) {
+        return Err("locked".into());
+    }
+    let keyfold = state.keyfold();
+    let package = if names.is_empty() { keyfold.share_all(&recipients) } else { keyfold.share(&names, &recipients) };
+    package.map_err(|e| e.to_string())
+}
+
+/// Opens a package made for this computer and stores its keys. Returns names and projects only.
+#[tauri::command]
+fn import_package(app: AppHandle, state: State<AppState>, package: String) -> Result<Vec<SlotInfo>, String> {
+    let imported = state.keyfold().import(&package).map_err(|e| e.to_string())?;
+    let _ = app.emit("keys-changed", ());
+    Ok(imported)
+}
+
 #[tauri::command]
 fn hide_value(window: WebviewWindow) {
     let _ = window.set_content_protected(false);
@@ -320,6 +352,9 @@ pub fn run(config: Config, mode: Mode) -> i32 {
             save_secret,
             reveal_value,
             hide_value,
+            public_key,
+            share_keys,
+            import_package,
             finish_prompt,
             open_prompt,
             check_update,

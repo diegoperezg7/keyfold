@@ -59,6 +59,12 @@ export const api = {
   revealValue: (name: string) => invoke<string | null>('reveal_value', { name }),
   hideValue: () => invoke<void>('hide_value'),
   finishPrompt: () => invoke<void>('finish_prompt'),
+  /** This computer's public key (age1…). Safe to show and send. */
+  publicKey: () => invoke<string>('public_key'),
+  /** Encrypted package for `recipients`; empty `names` means every key with a value. Asks for Touch ID. */
+  shareKeys: (names: string[], recipients: string[]) => invoke<string>('share_keys', { names, recipients }),
+  /** Opens a package made for this computer; returns names and projects only. */
+  importPackage: (pkg: string) => invoke<SlotInfo[]>('import_package', { package: pkg }),
   openPrompt: (name: string) => invoke<void>('open_prompt', { name }),
   /** Null when this is the latest version. */
   checkUpdate: () => invoke<UpdateInfo | null>('check_update'),

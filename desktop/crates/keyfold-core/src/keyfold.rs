@@ -22,6 +22,14 @@ pub enum KeyfoldError {
     InvalidProject(String),
     UnknownSecret(String),
     EmptyValue,
+    /// Not an `age1…` public key.
+    InvalidRecipient(String),
+    /// A share package made for other people's computers.
+    NotForThisDevice,
+    /// Not a share package, or damaged.
+    InvalidPackage,
+    /// None of the chosen keys has a value.
+    NothingToShare,
     Store(String),
     Io(String),
 }
@@ -42,6 +50,16 @@ impl fmt::Display for KeyfoldError {
                 &format!("No key named {n}. Create it with: keyfold create {n}"),
             ),
             Self::EmptyValue => t("El valor está vacío.", "The value is empty."),
+            Self::InvalidRecipient(r) => t(
+                &format!("Clave pública no válida: '{r}'. Debe empezar por age1 (keyfold id la muestra)."),
+                &format!("Invalid public key: '{r}'. It must start with age1 (keyfold id shows it)."),
+            ),
+            Self::NotForThisDevice => t(
+                "Este paquete no es para este equipo: se cifró para otra clave pública.",
+                "This package is not for this computer: it was encrypted to another public key.",
+            ),
+            Self::InvalidPackage => t("No es un paquete de Keyfold válido.", "Not a valid Keyfold package."),
+            Self::NothingToShare => t("Ninguna de esas claves tiene valor.", "None of those keys has a value."),
             // Store and I/O errors carry OS codes and paths only, never a value.
             Self::Store(m) | Self::Io(m) => m.clone(),
         };
@@ -81,7 +99,7 @@ impl Config {
 }
 
 pub struct Keyfold {
-    store: Box<dyn SecretStore>,
+    pub(crate) store: Box<dyn SecretStore>,
     registry: RegistryStore,
 }
 
