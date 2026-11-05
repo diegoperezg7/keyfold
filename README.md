@@ -4,10 +4,10 @@
 
 # Keyfold
 
-**Give your coding agent API keys it can use but never see.**
+**A key wallet for your coding agent: it can use your API keys, but never see them.**
 
-Paste a key once in a native window. Keyfold stores it encrypted in your OS credential store,<br>
-hands your agent a reference, and injects the real value only when your app runs.
+Keep the keys of all your projects in one place. Paste each key once in a native window; Keyfold stores it<br>
+encrypted in your OS credential store, hands your agent a reference, and injects the real value only when your app runs.
 
 [How it works](#how-it-works) · [Install](#install) · [Connect your agent](#connect-your-agent) · [Commands](#commands) · [Security](#security)
 
@@ -23,6 +23,12 @@ hands your agent a reference, and injects the real value only when your app runs
 <p align="center">
   <img src="docs/images/keys-window.png" width="820" alt="Keyfold keys window: names, status and projects of each key, never the value">
 </p>
+
+## Why it exists
+
+Keyfold is a personal project: the tool I use every day to work with my own coding agents.
+The keys of all my projects live in it, and my agents run those projects with them without ever reading one.
+It is open source in case it is useful to you too.
 
 ## The problem
 
@@ -75,14 +81,17 @@ No key in the repo, no key in the chat, no `.env` to pass around.
 ### In the app
 
 - **New key** creates a key by hand and opens the paste window, no agent needed.
-- **Show** displays a stored value to you. The first time after you open the window (and again each
-  day) it asks for Touch ID or your password. The value hides after 30 seconds, and while it is shown
+- **Show** displays a stored value to you. On macOS, the first time after you open the window (and again each
+  day) it asks for Touch ID or your password; Windows does not ask yet (see [SECURITY.md](SECURITY.md)). The value hides after 30 seconds, and while it is shown
   the window is left out of screenshots. Your agent has no way to do this: there is no CLI command
   or MCP tool for it.
 
 ## Install
 
-There are no signed releases yet, so you build it from source. You need:
+**macOS (Apple Silicon):** download the signed and notarized DMG from the
+[latest release](https://github.com/diegoperezg7/keyfold/releases/latest) and drag Keyfold to Applications.
+
+**Other platforms, or from source.** You need:
 
 - [Rust](https://rustup.rs) (stable) and Node.js 22+
 - macOS: the Xcode Command Line Tools (`xcode-select --install`)
@@ -96,13 +105,17 @@ npx tauri build --bundles app       # macOS: target/release/bundle/macos/Keyfold
 # npx tauri build --bundles nsis    # Windows: target/release/bundle/nsis/Keyfold_*-setup.exe
 ```
 
-On macOS, move the app to Applications. The same binary is the app, the CLI and the MCP server:
+On macOS, move the app to Applications (`ditto target/release/bundle/macos/Keyfold.app /Applications/Keyfold.app`).
+
+The same binary is the app, the CLI and the MCP server. Link it into your `PATH` so `keyfold` works in
+every shell, including your agent's (an `alias` is not enough: non-interactive shells ignore it):
 
 ```sh
-ditto target/release/bundle/macos/Keyfold.app /Applications/Keyfold.app
-alias keyfold="/Applications/Keyfold.app/Contents/MacOS/keyfold"
+sudo ln -sf /Applications/Keyfold.app/Contents/MacOS/keyfold /usr/local/bin/keyfold
 keyfold list
 ```
+
+If you skip this, the MCP server tells your agent the binary's full path, so `keyfold run` still works for it.
 
 Open it once (`open -a Keyfold`). It stays in the menu bar while it runs, with quick access to
 the keys that are waiting for a value, a new key, and connecting your agent. Closing the window
