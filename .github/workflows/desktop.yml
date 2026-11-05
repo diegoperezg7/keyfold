@@ -1,0 +1,50 @@
+name: desktop
+
+on:
+  push:
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
+  pull_request:
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
+
+jobs:
+  test-and-build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+
+      - run: npm ci
+      - name: Frontend tests
+        run: npm test
+      - name: Type-check and build frontend
+        run: npm run build
+      - name: Rust tests (core + CLI/MCP contract against the OS credential store)
+        run: cargo test --workspace
+      - name: Bundle
+        run: npx tauri build --bundles ${{ matrix.os == 'windows-latest' && 'nsis' || 'app' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llavero-${{ matrix.os }}
+          path: |
+            desktop/target/release/bundle/nsis/*.exe
+            desktop/target/release/bundle/macos/*.app
+          if-no-files-found: error

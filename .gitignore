@@ -1,0 +1,25 @@
+# Swift prototype
+.build/
+.swiftpm/
+*.xcodeproj
+
+# Desktop app (Tauri)
+desktop/node_modules/
+desktop/dist/
+desktop/target/
+desktop/src-tauri/gen/
+
+# Local data: never commit keys, registries or env files
+registry.json
+registry.json.*
+*.result
+.env
+.env.*
+*.pem
+*.p12
+*.key
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/

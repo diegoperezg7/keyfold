@@ -1,0 +1,180 @@
+<div align="center">
+
+<img src="docs/images/icon.png" width="96" height="96" alt="Llavero icon">
+
+# Llavero
+
+**Give your coding agent API keys it can use but never see.**
+
+Paste a key once in a native window. Llavero stores it encrypted in your OS credential store,<br>
+hands your agent a reference, and injects the real value only when your app runs.
+
+[How it works](#how-it-works) · [Install](#install) · [Connect your agent](#connect-your-agent) · [Commands](#commands) · [Security](#security)
+
+![macOS](https://img.shields.io/badge/macOS-tested-d6336c)
+![Windows](https://img.shields.io/badge/Windows-builds%20in%20CI-6a6a76)
+![MCP](https://img.shields.io/badge/MCP-stdio-d6336c)
+![Local only](https://img.shields.io/badge/cloud-none-6a6a76)
+
+</div>
+
+<br>
+
+<p align="center">
+  <img src="docs/images/keys-window.png" width="820" alt="Llavero keys window: names, status and projects of each key, never the value">
+</p>
+
+## The problem
+
+You just created an API key and your agent needs it. Today that means pasting it into the chat,
+or into a `.env` the agent can `cat`. Either way the key ends up in a transcript, a log or a commit.
+
+Llavero splits the job in two:
+
+| | Who handles it | Where it lives |
+|---|---|---|
+| **The value** | Only you, once, in a native window | macOS Keychain / Windows Credential Manager |
+| **The name** (`EXA_API_KEY`) | You and your agent | A small registry of names and projects |
+
+Your agent creates the slot, wires it into the project and runs the app. It never receives the value:
+not in tool results, not in command output, not in logs.
+
+## How it works
+
+<p align="center">
+  <img src="docs/images/flow.svg" width="900" alt="Flow: the agent asks Llavero for a slot, you paste the value in a native window, Llavero stores it in the OS credential store and returns only a reference; at run time the value is injected into your app's environment and masked in its output">
+</p>
+
+A typical session:
+
+> **You:** I've got the Exa key for the search feature.
+>
+> **Agent:** calls `create_secret("EXA_API_KEY", project: "search-bot")`
+>
+> **Llavero:** opens this window. You paste, press Enter, done.
+
+<p align="center">
+  <img src="docs/images/paste-window.png" width="420" alt="Paste window for STRIPE_SECRET_KEY: a masked field, a warning to only paste keys you asked for, Cancel and Save">
+</p>
+
+> **Agent:** gets `llavero://EXA_API_KEY`, then starts your app with
+> `llavero run --project search-bot -- npm run dev`.
+> Your app reads `process.env.EXA_API_KEY` as usual. If anything prints the key, the output shows `[llavero:EXA_API_KEY]`.
+
+### Working with a team
+
+Llavero has no cloud and no accounts, on purpose. Each person keeps their own keys on their own machine:
+
+1. Someone gets the key (from the provider, or a teammate sends it over a channel you trust).
+2. They tell their agent "I have it". The paste window opens on their machine.
+3. The project only refers to the key by name, so the same code works for everyone. Each teammate's
+   Llavero injects their own copy.
+
+No key in the repo, no key in the chat, no `.env` to pass around.
+
+## Install
+
+There are no signed releases yet, so you build it from source. You need [Rust](https://rustup.rs) and Node.js 22+.
+
+```sh
+git clone https://github.com/diegoperezg7/llavero.git
+cd llavero/desktop
+npm ci
+npx tauri build --bundles app       # macOS: target/release/bundle/macos/Llavero.app
+# npx tauri build --bundles nsis    # Windows installer
+```
+
+On macOS, move `Llavero.app` to `/Applications`. The same binary is the app, the CLI and the MCP server:
+
+```sh
+alias llavero="/Applications/Llavero.app/Contents/MacOS/llavero"
+llavero list
+```
+
+## Connect your agent
+
+Llavero speaks [MCP](https://modelcontextprotocol.io) over stdio, so any MCP client can use it.
+
+**Claude Code**
+
+```sh
+claude mcp add --scope user llavero -- /Applications/Llavero.app/Contents/MacOS/llavero mcp
+```
+
+**Codex** (`~/.codex/config.toml`)
+
+```toml
+[mcp_servers.llavero]
+command = "/Applications/Llavero.app/Contents/MacOS/llavero"
+args = ["mcp"]
+```
+
+**Cursor** (`.cursor/mcp.json`)
+
+```json
+{ "mcpServers": { "llavero": { "command": "/Applications/Llavero.app/Contents/MacOS/llavero", "args": ["mcp"] } } }
+```
+
+### MCP tools
+
+None of them returns a value. They return the name, the reference, whether a value is stored, and the projects.
+
+| Tool | What it does |
+|---|---|
+| `list_secrets` | List keys (optionally for one project) |
+| `create_secret` | Create a slot, assign it to a project, open the paste window. Waits until you save or cancel |
+| `request_secret_value` | Open the paste window to add or replace the value of an existing key |
+| `assign_secret` | Make an existing key available to a project |
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `llavero` | Open the app |
+| `llavero create NAME [--project P] [--no-prompt]` | Create a slot and open the paste window |
+| `llavero receive NAME` | Receive mode: create the slot if missing and open the paste window |
+| `llavero set NAME [--stdin]` | Store or replace a value (window, or stdin) |
+| `llavero assign NAME --project P` | Make a key available to a project |
+| `llavero list [--project P]` | Names, status and projects. Never values |
+| `llavero run --project P -- <command>` | Run with the project's keys in the environment, output masked |
+| `llavero delete NAME` | Delete a key and its value |
+| `llavero mcp` | MCP server over stdio |
+
+## Security
+
+What Llavero guarantees, and what it doesn't. The full review is in [SECURITY.md](SECURITY.md).
+
+| Llavero protects against | Llavero does **not** protect against |
+|---|---|
+| Keys pasted into chats, transcripts and agent context | A process started by `llavero run` reading its own environment and sending the key elsewhere |
+| Keys in `.env` files, commits and screenshots | Malware running as your user |
+| Keys printed to the terminal by your app (masked) | Encoded or partial copies of a key in output (only the exact value is masked) |
+| The key lingering in your clipboard after you paste it (macOS) | Clipboard history apps that already recorded it |
+| Typing meant for another app being saved by accident (Enter only saves pasted text) | A tricked agent asking you for a key you didn't request (the window warns you; cancel it) |
+
+Where things are stored:
+
+- **Values:** the OS credential store (macOS login Keychain, Windows Credential Manager), encrypted at rest and tied to your user account.
+- **Names and projects:** `registry.json` in your user data folder, readable only by you. It never contains values.
+
+## Project layout
+
+```
+desktop/                    the app (Tauri 2)
+  crates/llavero-core/      storage, registry, masking: plain Rust, no UI
+  src-tauri/                one binary: app + CLI + MCP server
+  src/                      UI: React, TypeScript, Zustand
+Sources/, Tests/            the original native macOS prototype (Swift)
+docs/                       images and the Swift prototype notes
+```
+
+## Development
+
+```sh
+cd desktop
+npm test                    # UI logic and paste-window state
+cargo test --workspace      # core + CLI/MCP contract against the real credential store
+npx tauri dev               # run the app with hot reload
+```
+
+The contract tests drive the real binary the way an agent would (CLI and MCP) and fail if any output contains a stored value.

@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-labelledby="t d">
+  <title id="t">How a key flows through Llavero</title>
+  <desc id="d">The agent asks Llavero for a key slot, you paste the value in a native window, Llavero stores it encrypted in the OS credential store and the agent only gets a reference. At run time the value is injected into your app's environment and masked in its output.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#F06595"/>
+    </marker>
+    <marker id="arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8a8a96"/>
+    </marker>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E8578A"/>
+      <stop offset="1" stop-color="#B0264F"/>
+    </linearGradient>
+    <style>
+      text { font-family: Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
+      .title { font-size: 26px; font-weight: 700; fill: #f4f4f6; }
+      .sub { font-size: 15px; fill: #a0a0ad; }
+      .h { font-size: 18px; font-weight: 650; fill: #f4f4f6; }
+      .p { font-size: 14px; fill: #a0a0ad; }
+      .mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 13px; fill: #f4f4f6; }
+      .label { font-size: 13.5px; font-weight: 600; fill: #f4f4f6; }
+      .num { font-size: 13px; font-weight: 700; fill: #1a0610; }
+      .box { fill: #121216; stroke: #2a2a32; stroke-width: 1.5; }
+      .accent { fill: #121216; stroke: #F06595; stroke-width: 2; }
+      .line { stroke: #F06595; stroke-width: 2.2; fill: none; }
+      .line-muted { stroke: #8a8a96; stroke-width: 2; fill: none; stroke-dasharray: 6 6; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="640" rx="28" fill="#0b0b0e"/>
+  <rect x="0.75" y="0.75" width="1198.5" height="638.5" rx="27.5" fill="none" stroke="#23232a" stroke-width="1.5"/>
+
+  <text class="title" x="48" y="66">How a key flows</text>
+  <text class="sub" x="48" y="94">The value goes from your clipboard to the OS credential store. The agent never holds it.</text>
+
+  <!-- Agent -->
+  <rect class="box" x="48" y="140" width="310" height="150" rx="16"/>
+  <text class="h" x="72" y="180">Your coding agent</text>
+  <text class="p" x="72" y="206">Claude Code · Codex · Cursor</text>
+  <text class="p" x="72" y="230">talks MCP, sees only</text>
+  <text class="mono" x="72" y="258">llavero://EXA_API_KEY</text>
+
+  <!-- Llavero -->
+  <rect class="accent" x="445" y="140" width="310" height="150" rx="16"/>
+  <rect x="469" y="164" width="40" height="40" rx="11" fill="url(#brand)"/>
+  <g fill="none" stroke="#fff" stroke-width="72" stroke-linecap="round" stroke-linejoin="round" transform="translate(469 164) scale(0.039)">
+    <circle cx="400" cy="420" r="150"/>
+    <path d="M506 526 L770 790 M676 696 L736 636 M610 630 L660 580"/>
+  </g>
+  <text class="h" x="521" y="191">Llavero</text>
+  <text class="p" x="469" y="230">names + projects in a registry</text>
+  <text class="p" x="469" y="254">values: never returned, never logged</text>
+
+  <!-- Store -->
+  <rect class="box" x="842" y="140" width="310" height="150" rx="16"/>
+  <text class="h" x="866" y="180">OS credential store</text>
+  <text class="p" x="866" y="206">macOS Keychain</text>
+  <text class="p" x="866" y="230">Windows Credential Manager</text>
+  <text class="p" x="866" y="258">encrypted at rest, per user</text>
+
+  <!-- You -->
+  <rect class="box" x="445" y="440" width="310" height="150" rx="16"/>
+  <text class="h" x="469" y="480">You</text>
+  <rect x="469" y="498" width="262" height="36" rx="8" fill="#0b0b0e" stroke="#F06595" stroke-opacity="0.6"/>
+  <text class="mono" x="483" y="521" letter-spacing="3">••••••••••••••</text>
+  <text class="p" x="469" y="566">paste once in the native window</text>
+
+  <!-- Your app -->
+  <rect class="box" x="48" y="440" width="310" height="150" rx="16"/>
+  <text class="h" x="72" y="480">Your app</text>
+  <text class="mono" x="72" y="508">EXA_API_KEY=…  (env only)</text>
+  <text class="p" x="72" y="536">output masked as</text>
+  <text class="mono" x="72" y="562">[llavero:EXA_API_KEY]</text>
+
+  <!-- 1: agent -> llavero -->
+  <path class="line" d="M358 180 H 445" marker-end="url(#arrow)"/>
+  <circle cx="378" cy="160" r="11" fill="#F06595"/><text class="num" x="374" y="165">1</text>
+  <text class="label" x="394" y="165">ask</text>
+
+  <!-- 2: llavero -> you -->
+  <path class="line" d="M560 290 V 440" marker-end="url(#arrow)"/>
+  <circle cx="540" cy="350" r="11" fill="#F06595"/><text class="num" x="536" y="355">2</text>
+  <text class="label" x="524" y="355" text-anchor="end">window</text>
+
+  <!-- 3: you -> llavero -->
+  <path class="line" d="M640 440 V 290" marker-end="url(#arrow)"/>
+  <circle cx="660" cy="350" r="11" fill="#F06595"/><text class="num" x="656" y="355">3</text>
+  <text class="label" x="678" y="355">paste</text>
+
+  <!-- 4: llavero -> store -->
+  <path class="line" d="M755 215 H 842" marker-end="url(#arrow)"/>
+  <circle cx="775" cy="195" r="11" fill="#F06595"/><text class="num" x="771" y="200">4</text>
+  <text class="label" x="791" y="200">store</text>
+
+  <!-- 5: llavero -> agent (reference only) -->
+  <path class="line" d="M445 250 H 358" marker-end="url(#arrow)"/>
+  <circle cx="401" cy="274" r="11" fill="#F06595"/><text class="num" x="397" y="279">5</text>
+  <text class="label" x="401" y="306" text-anchor="middle">reference</text>
+
+  <!-- 6: run -->
+  <path class="line-muted" d="M203 290 V 440" marker-end="url(#arrow-muted)"/>
+  <circle cx="183" cy="350" r="11" fill="#F06595"/><text class="num" x="179" y="355">6</text>
+  <text class="mono" x="213" y="355">llavero run</text>
+  <text class="mono" x="213" y="375">--project web-app</text>
+  <text class="mono" x="213" y="395">-- npm run dev</text>
+
+  <!-- store -> run (value injected at run time) -->
+  <path class="line-muted" d="M997 290 V 610 H 203 V 590" marker-end="url(#arrow-muted)"/>
+  <text class="p" x="790" y="630">value injected only at run time</text>
+</svg>

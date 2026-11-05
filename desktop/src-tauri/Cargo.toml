@@ -1,0 +1,18 @@
+[package]
+name = "llavero"
+version = "0.1.0"
+edition = "2021"
+description = "Llavero: local key vault for coding agents (app, CLI and MCP server in one binary)."
+
+[[bin]]
+name = "llavero"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+llavero-core = { path = "../crates/llavero-core" }
+tauri = { version = "2.12", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

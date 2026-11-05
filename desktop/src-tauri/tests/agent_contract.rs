@@ -1,0 +1,216 @@
+//! Drives the real `llavero` binary the way a person or an agent would (CLI and MCP),
+//! against the real OS credential store, isolated by a throwaway service and registry.
+//! Contract: no output ever contains a stored value.
+
+use serde_json::{json, Value};
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+
+struct Sandbox {
+    home: PathBuf,
+    service: String,
+    outputs: Vec<String>,
+}
+
+struct Output {
+    status: i32,
+    out: String,
+    err: String,
+}
+
+impl Sandbox {
+    fn new(tag: &str) -> Self {
+        let id = format!("{tag}-{}-{}", std::process::id(), unique());
+        Self {
+            home: std::env::temp_dir().join(format!("llavero-it-{id}")),
+            service: format!("com.diego.llavero.tests.{id}"),
+            outputs: vec![],
+        }
+    }
+
+    fn cli(&mut self, args: &[&str], stdin: Option<&str>) -> Output {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_llavero"))
+            .args(args)
+            .env("LLAVERO_HOME", &self.home)
+            .env("LLAVERO_SERVICE", &self.service)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn llavero");
+        if let Some(input) = stdin {
+            child.stdin.as_mut().unwrap().write_all(input.as_bytes()).unwrap();
+        }
+        drop(child.stdin.take());
+        let output = child.wait_with_output().unwrap();
+        let result = Output {
+            status: output.status.code().unwrap_or(-1),
+            out: String::from_utf8_lossy(&output.stdout).into_owned(),
+            err: String::from_utf8_lossy(&output.stderr).into_owned(),
+        };
+        self.outputs.push(result.out.clone());
+        self.outputs.push(result.err.clone());
+        result
+    }
+
+    fn mcp(&mut self, messages: &[Value]) -> Vec<Value> {
+        let input: String = messages.iter().map(|m| format!("{m}\n")).collect();
+        let result = self.cli(&["mcp"], Some(&input));
+        assert_eq!(result.status, 0, "{}", result.err);
+        result.out.lines().map(|l| serde_json::from_str(l).expect("json line")).collect()
+    }
+
+    fn registry(&self) -> String {
+        std::fs::read_to_string(self.home.join("registry.json")).unwrap_or_default()
+    }
+
+    fn assert_never_printed(&self, secret: &str) {
+        for output in &self.outputs {
+            assert!(!output.contains(secret), "value leaked in: {output}");
+        }
+        assert!(!self.registry().contains(secret), "value leaked into the registry file");
+    }
+}
+
+impl Drop for Sandbox {
+    fn drop(&mut self) {
+        for name in ["EXA_API_KEY", "OTHER_KEY"] {
+            let _ = Command::new(env!("CARGO_BIN_EXE_llavero"))
+                .args(["delete", name])
+                .env("LLAVERO_HOME", &self.home)
+                .env("LLAVERO_SERVICE", &self.service)
+                .output();
+        }
+        let _ = std::fs::remove_dir_all(&self.home);
+    }
+}
+
+fn unique() -> u128 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+}
+
+fn secret(tag: &str) -> String {
+    format!("{tag}-test-{}", unique())
+}
+
+/// sh on Unix, cmd on Windows: compare $EXA_API_KEY with stdin without printing it.
+#[cfg(unix)]
+fn check_env_equals_stdin(var: &str) -> Vec<String> {
+    vec!["/bin/sh".into(), "-c".into(), format!(r#"read v; test "$v" = "${var}""#)]
+}
+
+#[test]
+fn create_registers_slot_without_value() {
+    let mut s = Sandbox::new("create");
+    let created = s.cli(&["create", "EXA_API_KEY", "--project", "demo", "--no-prompt"], None);
+    assert_eq!(created.status, 0, "{}", created.err);
+    assert!(created.out.contains("llavero://EXA_API_KEY"));
+    assert!(s.registry().contains("EXA_API_KEY"));
+
+    let listed = s.cli(&["list"], None);
+    assert!(listed.out.contains("EXA_API_KEY") && listed.out.contains("demo"));
+
+    let slot = s.mcp(&[json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_secrets","arguments":{}}})]);
+    assert_eq!(slot[0]["result"]["structuredContent"]["secrets"][0]["hasValue"], json!(false), "slot must not have a value");
+}
+
+#[cfg(unix)]
+#[test]
+fn no_cli_output_contains_the_value_and_it_survives_restart() {
+    let mut s = Sandbox::new("leak");
+    let value = secret("exa");
+    s.cli(&["create", "EXA_API_KEY", "--project", "demo", "--no-prompt"], None);
+    let set = s.cli(&["set", "EXA_API_KEY", "--stdin"], Some(&format!("{value}\n")));
+    assert_eq!(set.status, 0, "{}", set.err);
+    s.cli(&["assign", "EXA_API_KEY", "--project", "other"], None);
+    s.cli(&["list"], None);
+    s.cli(&["list", "--project", "demo"], None);
+    s.cli(&["create", "EXA_API_KEY", "--project", "demo", "--no-prompt"], None);
+    s.cli(&["set", "MISSING", "--stdin"], Some(&value));
+    s.cli(&["bogus"], None);
+
+    // A child that tries to print the value on both streams.
+    let leak = s.cli(
+        &["run", "--project", "demo", "--", "/bin/sh", "-c", r#"printenv EXA_API_KEY; printf 'x=%s' "$EXA_API_KEY" >&2; echo "a $EXA_API_KEY b""#],
+        None,
+    );
+    assert_eq!(leak.status, 0, "{}", leak.err);
+    assert!(leak.out.contains("[llavero:EXA_API_KEY]"), "child must receive the value, masked: {}", leak.out);
+    assert!(leak.err.contains("x=[llavero:EXA_API_KEY]"));
+
+    // Each call is a new process: this one only has the credential store to go on.
+    let args = check_env_equals_stdin("EXA_API_KEY");
+    let mut run = vec!["run", "--project", "demo", "--"];
+    run.extend(args.iter().map(String::as_str));
+    assert_eq!(s.cli(&run, Some(&format!("{value}\n"))).status, 0, "value did not survive a new process");
+
+    s.assert_never_printed(&value);
+}
+
+#[cfg(unix)]
+#[test]
+fn project_receives_only_assigned_keys() {
+    let mut s = Sandbox::new("projects");
+    s.cli(&["create", "EXA_API_KEY", "--project", "alpha", "--no-prompt"], None);
+    s.cli(&["create", "OTHER_KEY", "--project", "beta", "--no-prompt"], None);
+    s.cli(&["set", "EXA_API_KEY", "--stdin"], Some(&secret("exa")));
+    s.cli(&["set", "OTHER_KEY", "--stdin"], Some(&secret("other")));
+
+    let sh = |script: &str| vec!["/bin/sh".to_string(), "-c".to_string(), script.to_string()];
+    for (project, script) in [
+        ("alpha", r#"test -n "$EXA_API_KEY" && test -z "${OTHER_KEY+set}""#),
+        ("beta", r#"test -n "$OTHER_KEY" && test -z "${EXA_API_KEY+set}""#),
+        ("gamma", r#"test -z "${EXA_API_KEY+set}" && test -z "${OTHER_KEY+set}""#),
+    ] {
+        let cmd = sh(script);
+        let mut args = vec!["run", "--project", project, "--"];
+        args.extend(cmd.iter().map(String::as_str));
+        assert_eq!(s.cli(&args, None).status, 0, "project {project} got the wrong keys");
+    }
+}
+
+#[test]
+fn mcp_tools_never_return_the_value() {
+    let mut s = Sandbox::new("mcp");
+    let value = secret("mcp");
+    let first = s.mcp(&[
+        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}),
+        json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_secret","arguments":{"name":"EXA_API_KEY","project":"demo","prompt":false}}}),
+    ]);
+    assert_eq!(first.len(), 3, "a notification must get no response");
+    assert_eq!(first[0]["result"]["protocolVersion"], "2025-06-18");
+    let mut tools: Vec<&str> = first[1]["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+    tools.sort();
+    assert_eq!(tools, ["assign_secret", "create_secret", "list_secrets", "request_secret_value"]);
+    assert_eq!(first[2]["result"]["structuredContent"]["reference"], "llavero://EXA_API_KEY");
+
+    assert_eq!(s.cli(&["set", "EXA_API_KEY", "--stdin"], Some(&value)).status, 0);
+
+    let call = |id: i64, name: &str, args: Value| json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":name,"arguments":args}});
+    let second = s.mcp(&[
+        call(1, "list_secrets", json!({})),
+        call(2, "list_secrets", json!({"project":"demo"})),
+        call(3, "assign_secret", json!({"name":"EXA_API_KEY","project":"other"})),
+        call(4, "create_secret", json!({"name":"EXA_API_KEY","project":"demo"})),
+        call(5, "create_secret", json!({"name":"bad name"})),
+        call(6, "request_secret_value", json!({"name":"MISSING"})),
+        json!({"jsonrpc":"2.0","id":7,"method":"nope/method"}),
+    ]);
+    assert_eq!(second.len(), 7);
+    let listed = &second[0]["result"]["structuredContent"]["secrets"][0];
+    assert_eq!(listed["hasValue"], json!(true));
+    let mut fields: Vec<&String> = listed.as_object().unwrap().keys().collect();
+    fields.sort();
+    assert_eq!(fields, ["hasValue", "name", "projects", "reference"]);
+    assert_eq!(second[2]["result"]["structuredContent"]["projects"], json!(["demo", "other"]));
+    // Existing value: create_secret must not reopen the window, just report it.
+    assert_eq!(second[3]["result"]["structuredContent"]["hasValue"], json!(true));
+    assert_eq!(second[4]["result"]["isError"], json!(true));
+    assert_eq!(second[5]["result"]["isError"], json!(true));
+    assert_eq!(second[6]["error"]["code"], json!(-32601));
+
+    s.assert_never_printed(&value);
+}
