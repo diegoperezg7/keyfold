@@ -1,12 +1,12 @@
 <div align="center">
 
-<img src="docs/images/icon.png" width="96" height="96" alt="Llavero icon">
+<img src="docs/images/icon.png" width="96" height="96" alt="Keyfold icon">
 
-# Llavero
+# Keyfold
 
 **Give your coding agent API keys it can use but never see.**
 
-Paste a key once in a native window. Llavero stores it encrypted in your OS credential store,<br>
+Paste a key once in a native window. Keyfold stores it encrypted in your OS credential store,<br>
 hands your agent a reference, and injects the real value only when your app runs.
 
 [How it works](#how-it-works) · [Install](#install) · [Connect your agent](#connect-your-agent) · [Commands](#commands) · [Security](#security)
@@ -21,7 +21,7 @@ hands your agent a reference, and injects the real value only when your app runs
 <br>
 
 <p align="center">
-  <img src="docs/images/keys-window.png" width="820" alt="Llavero keys window: names, status and projects of each key, never the value">
+  <img src="docs/images/keys-window.png" width="820" alt="Keyfold keys window: names, status and projects of each key, never the value">
 </p>
 
 ## The problem
@@ -29,7 +29,7 @@ hands your agent a reference, and injects the real value only when your app runs
 You just created an API key and your agent needs it. Today that means pasting it into the chat,
 or into a `.env` the agent can `cat`. Either way the key ends up in a transcript, a log or a commit.
 
-Llavero splits the job in two:
+Keyfold splits the job in two:
 
 | | Who handles it | Where it lives |
 |---|---|---|
@@ -42,7 +42,7 @@ not in tool results, not in command output, not in logs.
 ## How it works
 
 <p align="center">
-  <img src="docs/images/flow.svg" width="900" alt="Flow: the agent asks Llavero for a slot, you paste the value in a native window, Llavero stores it in the OS credential store and returns only a reference; at run time the value is injected into your app's environment and masked in its output">
+  <img src="docs/images/flow.svg" width="900" alt="Flow: the agent asks Keyfold for a slot, you paste the value in a native window, Keyfold stores it in the OS credential store and returns only a reference; at run time the value is injected into your app's environment and masked in its output">
 </p>
 
 A typical session:
@@ -51,68 +51,113 @@ A typical session:
 >
 > **Agent:** calls `create_secret("EXA_API_KEY", project: "search-bot")`
 >
-> **Llavero:** opens this window. You paste, press Enter, done.
+> **Keyfold:** opens this window. You paste, press Enter, done.
 
 <p align="center">
   <img src="docs/images/paste-window.png" width="420" alt="Paste window for STRIPE_SECRET_KEY: a masked field, a warning to only paste keys you asked for, Cancel and Save">
 </p>
 
-> **Agent:** gets `llavero://EXA_API_KEY`, then starts your app with
-> `llavero run --project search-bot -- npm run dev`.
-> Your app reads `process.env.EXA_API_KEY` as usual. If anything prints the key, the output shows `[llavero:EXA_API_KEY]`.
+> **Agent:** gets `keyfold://EXA_API_KEY`, then starts your app with
+> `keyfold run --project search-bot -- npm run dev`.
+> Your app reads `process.env.EXA_API_KEY` as usual. If anything prints the key, the output shows `[keyfold:EXA_API_KEY]`.
 
 ### Working with a team
 
-Llavero has no cloud and no accounts, on purpose. Each person keeps their own keys on their own machine:
+Keyfold has no cloud and no accounts, on purpose. Each person keeps their own keys on their own machine:
 
 1. Someone gets the key (from the provider, or a teammate sends it over a channel you trust).
 2. They tell their agent "I have it". The paste window opens on their machine.
 3. The project only refers to the key by name, so the same code works for everyone. Each teammate's
-   Llavero injects their own copy.
+   Keyfold injects their own copy.
 
 No key in the repo, no key in the chat, no `.env` to pass around.
 
+### In the app
+
+- **New key** creates a key by hand and opens the paste window, no agent needed.
+- **Show** displays a stored value to you. The first time after you open the window (and again each
+  day) it asks for Touch ID or your password. The value hides after 30 seconds, and while it is shown
+  the window is left out of screenshots. Your agent has no way to do this: there is no CLI command
+  or MCP tool for it.
+
 ## Install
 
-There are no signed releases yet, so you build it from source. You need [Rust](https://rustup.rs) and Node.js 22+.
+There are no signed releases yet, so you build it from source. You need:
+
+- [Rust](https://rustup.rs) (stable) and Node.js 22+
+- macOS: the Xcode Command Line Tools (`xcode-select --install`)
+- Windows: the Microsoft C++ Build Tools and WebView2 (preinstalled on Windows 11)
 
 ```sh
-git clone https://github.com/diegoperezg7/llavero.git
-cd llavero/desktop
+git clone https://github.com/diegoperezg7/keyfold.git
+cd keyfold/desktop
 npm ci
-npx tauri build --bundles app       # macOS: target/release/bundle/macos/Llavero.app
-# npx tauri build --bundles nsis    # Windows installer
+npx tauri build --bundles app       # macOS: target/release/bundle/macos/Keyfold.app
+# npx tauri build --bundles nsis    # Windows: target/release/bundle/nsis/Keyfold_*-setup.exe
 ```
 
-On macOS, move `Llavero.app` to `/Applications`. The same binary is the app, the CLI and the MCP server:
+On macOS, move the app to Applications. The same binary is the app, the CLI and the MCP server:
 
 ```sh
-alias llavero="/Applications/Llavero.app/Contents/MacOS/llavero"
-llavero list
+ditto target/release/bundle/macos/Keyfold.app /Applications/Keyfold.app
+alias keyfold="/Applications/Keyfold.app/Contents/MacOS/keyfold"
+keyfold list
 ```
+
+Open it once (`open -a Keyfold`). It stays in the menu bar while it runs, with quick access to
+the keys that are waiting for a value, a new key, and connecting your agent. Closing the window
+does not quit it; use **Quit Keyfold** in that menu.
+
+### Signed DMG (maintainers)
+
+`desktop/scripts/release-macos.sh` builds the app and a drag-to-install DMG, signs both with your
+Developer ID and, if you give it a notarytool profile, notarizes and staples the DMG.
+Credentials stay in your keychain; nothing secret goes in the repo.
+
+```sh
+xcrun notarytool store-credentials keyfold-notary --apple-id you@example.com --team-id TEAMID   # once
+APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+KEYFOLD_NOTARY_PROFILE=keyfold-notary \
+./scripts/release-macos.sh
+```
+
+<p align="center">
+  <img src="docs/images/dmg-window.png" width="560" alt="Keyfold installer window: drag the app to Applications">
+</p>
 
 ## Connect your agent
 
-Llavero speaks [MCP](https://modelcontextprotocol.io) over stdio, so any MCP client can use it.
+Keyfold speaks [MCP](https://modelcontextprotocol.io) over stdio, so any MCP client can use it.
+One command registers it (or **Connect agent** in the menu bar). It writes the path to the binary
+and nothing else, and running it twice is harmless:
+
+```sh
+keyfold connect claude    # runs `claude mcp add --scope user keyfold ...`
+keyfold connect codex     # adds [mcp_servers.keyfold] to ~/.codex/config.toml
+keyfold connect cursor    # adds "keyfold" to ~/.cursor/mcp.json
+```
+
+Restart the agent afterwards. Your agent can run this itself too: it is a setup step, it never
+touches a key. To do it by hand instead:
 
 **Claude Code**
 
 ```sh
-claude mcp add --scope user llavero -- /Applications/Llavero.app/Contents/MacOS/llavero mcp
+claude mcp add --scope user keyfold -- /Applications/Keyfold.app/Contents/MacOS/keyfold mcp
 ```
 
 **Codex** (`~/.codex/config.toml`)
 
 ```toml
-[mcp_servers.llavero]
-command = "/Applications/Llavero.app/Contents/MacOS/llavero"
+[mcp_servers.keyfold]
+command = "/Applications/Keyfold.app/Contents/MacOS/keyfold"
 args = ["mcp"]
 ```
 
-**Cursor** (`.cursor/mcp.json`)
+**Cursor** (`~/.cursor/mcp.json`, or `.cursor/mcp.json` in one project)
 
 ```json
-{ "mcpServers": { "llavero": { "command": "/Applications/Llavero.app/Contents/MacOS/llavero", "args": ["mcp"] } } }
+{ "mcpServers": { "keyfold": { "command": "/Applications/Keyfold.app/Contents/MacOS/keyfold", "args": ["mcp"] } } }
 ```
 
 ### MCP tools
@@ -130,23 +175,24 @@ None of them returns a value. They return the name, the reference, whether a val
 
 | Command | What it does |
 |---|---|
-| `llavero` | Open the app |
-| `llavero create NAME [--project P] [--no-prompt]` | Create a slot and open the paste window |
-| `llavero receive NAME` | Receive mode: create the slot if missing and open the paste window |
-| `llavero set NAME [--stdin]` | Store or replace a value (window, or stdin) |
-| `llavero assign NAME --project P` | Make a key available to a project |
-| `llavero list [--project P]` | Names, status and projects. Never values |
-| `llavero run --project P -- <command>` | Run with the project's keys in the environment, output masked |
-| `llavero delete NAME` | Delete a key and its value |
-| `llavero mcp` | MCP server over stdio |
+| `keyfold` | Open the app |
+| `keyfold create NAME [--project P] [--no-prompt]` | Create a slot and open the paste window |
+| `keyfold receive NAME` | Receive mode: create the slot if missing and open the paste window |
+| `keyfold set NAME [--stdin]` | Store or replace a value (window, or stdin) |
+| `keyfold assign NAME --project P` | Make a key available to a project |
+| `keyfold list [--project P]` | Names, status and projects. Never values |
+| `keyfold run --project P -- <command>` | Run with the project's keys in the environment, output masked |
+| `keyfold delete NAME` | Delete a key and its value |
+| `keyfold mcp` | MCP server over stdio |
+| `keyfold connect claude\|codex\|cursor` | Register Keyfold as the agent's MCP server |
 
 ## Security
 
-What Llavero guarantees, and what it doesn't. The full review is in [SECURITY.md](SECURITY.md).
+What Keyfold guarantees, and what it doesn't. The full review is in [SECURITY.md](SECURITY.md).
 
-| Llavero protects against | Llavero does **not** protect against |
+| Keyfold protects against | Keyfold does **not** protect against |
 |---|---|
-| Keys pasted into chats, transcripts and agent context | A process started by `llavero run` reading its own environment and sending the key elsewhere |
+| Keys pasted into chats, transcripts and agent context | A process started by `keyfold run` reading its own environment and sending the key elsewhere |
 | Keys in `.env` files, commits and screenshots | Malware running as your user |
 | Keys printed to the terminal by your app (masked) | Encoded or partial copies of a key in output (only the exact value is masked) |
 | The key lingering in your clipboard after you paste it (macOS) | Clipboard history apps that already recorded it |
@@ -161,7 +207,7 @@ Where things are stored:
 
 ```
 desktop/                    the app (Tauri 2)
-  crates/llavero-core/      storage, registry, masking: plain Rust, no UI
+  crates/keyfold-core/      storage, registry, masking: plain Rust, no UI
   src-tauri/                one binary: app + CLI + MCP server
   src/                      UI: React, TypeScript, Zustand
 Sources/, Tests/            the original native macOS prototype (Swift)

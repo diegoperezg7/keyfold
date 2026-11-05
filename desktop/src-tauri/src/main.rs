@@ -1,15 +1,18 @@
 //! One binary, three faces:
-//!   llavero            / llavero app  -> desktop window with the keys
-//!   llavero mcp                       -> MCP server over stdio for coding agents
-//!   llavero <command>                 -> CLI (create, set, receive, assign, list, run, delete)
+//!   keyfold            / keyfold app  -> desktop window with the keys
+//!   keyfold mcp                       -> MCP server over stdio for coding agents
+//!   keyfold <command>                 -> CLI (create, set, receive, assign, list, run, delete, connect)
 //! Output contract everywhere: names, references, status and projects. Never a value.
 
 mod cli;
+mod connect;
 mod gui;
 mod mcp;
 mod prompt;
+mod tray;
+mod unlock;
 
-use llavero_core::Config;
+use keyfold_core::Config;
 
 fn main() {
     // Finder may pass a process serial number argument on older macOS.

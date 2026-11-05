@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { SlotInfo } from './api'
-import { counts, knownProjects, visibleKeys } from './logic'
+import { counts, isValidKeyName, isValidProject, knownProjects, NO_PROJECT, normalizeKeyName, visibleKeys } from './logic'
 
 const slot = (name: string, hasValue: boolean, projects: string[] = []): SlotInfo => ({
   name,
-  reference: `llavero://${name}`,
+  reference: `keyfold://${name}`,
   hasValue,
   projects,
 })
@@ -37,5 +37,38 @@ describe('keys window logic', () => {
 
   it('lists known projects once, sorted', () => {
     expect(knownProjects([...keys, slot('X_KEY', false, ['web'])])).toEqual(['search-bot', 'web'])
+  })
+})
+
+describe('project filter', () => {
+  const many = [...keys, slot('STRIPE_KEY', false, ['shop', 'web'])]
+
+  it('shows only the keys of the chosen project', () => {
+    expect(visibleKeys(many, '', 'all', byName, 'web').map((k) => k.name)).toEqual(['OPENAI_API_KEY', 'STRIPE_KEY'])
+    expect(visibleKeys(many, '', 'all', byName, 'shop').map((k) => k.name)).toEqual(['STRIPE_KEY'])
+    expect(visibleKeys(many, '', 'all', byName, 'search-bot').map((k) => k.name)).toEqual(['EXA_API_KEY'])
+  })
+
+  it('lists keys with no project, and combines with status and search', () => {
+    expect(visibleKeys(many, '', 'all', byName, NO_PROJECT).map((k) => k.name)).toEqual(['RESEND_API_KEY'])
+    expect(visibleKeys(many, '', 'empty', byName, 'web').map((k) => k.name)).toEqual(['STRIPE_KEY'])
+    expect(visibleKeys(many, 'openai', 'all', byName, 'shop')).toEqual([])
+    expect(visibleKeys(many, '', 'all', byName, null)).toHaveLength(4)
+  })
+})
+
+describe('new key form', () => {
+  it('normalizes typed names to the key form', () => {
+    expect(normalizeKeyName(' exa api-key ')).toBe('EXA_API_KEY')
+    expect(normalizeKeyName('stripe.secret key')).toBe('STRIPE_SECRET_KEY')
+  })
+
+  it('validates names and projects like the core', () => {
+    expect(isValidKeyName('EXA_API_KEY')).toBe(true)
+    expect(isValidKeyName('1KEY')).toBe(false)
+    expect(isValidKeyName('')).toBe(false)
+    expect(isValidKeyName('KEY/2')).toBe(false)
+    expect(isValidProject('search-bot')).toBe(true)
+    expect(isValidProject('bad/project')).toBe(false)
   })
 })

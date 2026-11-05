@@ -1,12 +1,17 @@
 import { listen } from '@tauri-apps/api/event'
-import { ArrowDown, ArrowUp, FolderPlus, KeyRound, Plus, RefreshCw, RotateCw, Search, ShieldCheck, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
-import { api, type SlotInfo } from '../api'
+import { AlertCircle, ArrowDown, ArrowUp, CheckCircle2, Eye, FolderPlus, KeyRound, Plus, RefreshCw, RotateCw, Search, ShieldCheck, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { api, boot, type Notice, type SlotInfo } from '../api'
 import { AssignDialog } from '../components/AssignDialog'
+import { Logo } from '../components/Logo'
+import { NewKeyDialog } from '../components/NewKeyDialog'
+import { ProjectSelect } from '../components/ProjectSelect'
+import { RevealDialog } from '../components/RevealDialog'
+import { Segmented } from '../components/Segmented'
 import { ProjectChips } from '../components/ProjectChips'
 import { StatusPill } from '../components/StatusPill'
 import { useT, type Key } from '../i18n'
-import { counts, visibleKeys, type SortKey, type StatusFilter } from '../logic'
+import { counts, inProject, knownProjects, NO_PROJECT, visibleKeys, type SortKey, type StatusFilter } from '../logic'
 import { useKeys } from '../stores/keys'
 
 const FILTERS: { id: StatusFilter; label: Key }[] = [
@@ -17,10 +22,35 @@ const FILTERS: { id: StatusFilter; label: Key }[] = [
 
 export function KeysView() {
   const t = useT()
-  const { keys, loaded, loadFailed, search, filter, sort, load, setSearch, setFilter, toggleSort } = useKeys()
+  const { keys, loaded, loadFailed, search, filter, sort, project, load, setSearch, setFilter, setProject, toggleSort } = useKeys()
   const [assigning, setAssigning] = useState<SlotInfo | null>(null)
-  const total = counts(keys)
-  const rows = useMemo(() => visibleKeys(keys, search, filter, sort), [keys, search, filter, sort])
+  const [revealing, setRevealing] = useState<string | null>(null)
+  const [creating, setCreating] = useState(boot.action === 'new')
+  const [notice, setNotice] = useState<Notice | null>(boot.notice ?? null)
+
+  // Menu bar: "New key…" and the result of "Connect agent".
+  useEffect(() => {
+    const stops = [
+      listen('open-new-key', () => setCreating(true)),
+      listen<Notice>('notice', (e) => setNotice(e.payload)),
+    ]
+    return () => stops.forEach((stop) => stop.then((f) => f()))
+  }, [])
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(null), 8000)
+    return () => clearTimeout(timer)
+  }, [notice])
+  const closeReveal = useCallback(() => setRevealing(null), [])
+  const projects = useMemo(() => knownProjects(keys), [keys])
+  // A project that no longer has keys (renamed, deleted) falls back to all.
+  const activeProject = project === null || project === NO_PROJECT || projects.includes(project) ? project : null
+  // Status counts follow the chosen project, so the selector tells what the list will show.
+  const total = counts(keys.filter((k) => inProject(k, activeProject)))
+  const rows = useMemo(
+    () => visibleKeys(keys, search, filter, sort, activeProject),
+    [keys, search, filter, sort, activeProject],
+  )
 
   useEffect(() => {
     load()
@@ -35,28 +65,49 @@ export function KeysView() {
     }
   }, [load])
 
+  // The subtitle describes the whole vault, whatever the filters.
+  const vault = counts(keys)
   const summary = [
-    t(total.all === 1 ? 'keysOne' : 'keysOther', { n: total.all }),
-    t(total.stored === 1 ? 'storedOne' : 'storedOther', { n: total.stored }),
-    t(total.empty === 1 ? 'emptyOne' : 'emptyOther', { n: total.empty }),
+    t(vault.all === 1 ? 'keysOne' : 'keysOther', { n: vault.all }),
+    t(vault.stored === 1 ? 'storedOne' : 'storedOther', { n: vault.stored }),
+    t(vault.empty === 1 ? 'emptyOne' : 'emptyOther', { n: vault.empty }),
   ].join(' · ')
 
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark">
-            <KeyRound size={18} strokeWidth={2.2} aria-hidden />
-          </span>
-          <div>
-            <h1>Llavero</h1>
-            <p className="muted small">{summary}</p>
+      <div className="content">
+      {/* Glass header: the list scrolls under it. The top row is the window's drag area. */}
+      <header className="header">
+      <div className="topbar" data-tauri-drag-region>
+        <div className="brand" data-tauri-drag-region>
+          <Logo size={30} />
+          <div data-tauri-drag-region>
+            <h1 data-tauri-drag-region>Keyfold</h1>
+            <p className="muted small" data-tauri-drag-region>
+              {summary}
+            </p>
           </div>
         </div>
-        <button className="btn btn-icon" onClick={() => load()} title={t('refresh')} aria-label={t('refresh')}>
-          <RefreshCw size={16} aria-hidden />
-        </button>
-      </header>
+        <div className="topbar-actions">
+          <button className="btn btn-icon btn-ghost" onClick={() => load()} title={t('refresh')} aria-label={t('refresh')}>
+            <RefreshCw size={16} aria-hidden />
+          </button>
+          <button className="btn btn-primary" onClick={() => setCreating(true)}>
+            <Plus size={16} aria-hidden />
+            {t('newKey')}
+          </button>
+        </div>
+      </div>
+
+      {notice && (
+        <div className={notice.ok ? 'notice' : 'notice notice-error'} role="status">
+          {notice.ok ? <CheckCircle2 size={16} aria-hidden /> : <AlertCircle size={16} aria-hidden />}
+          <span>{notice.text}</span>
+          <button className="search-clear" onClick={() => setNotice(null)} aria-label="Close">
+            <X size={14} aria-hidden />
+          </button>
+        </div>
+      )}
 
       <div className="toolbar">
         <label className="search">
@@ -73,27 +124,26 @@ export function KeysView() {
             </button>
           )}
         </label>
-        <div className="segmented" role="tablist">
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              role="tab"
-              aria-selected={filter === f.id}
-              className={filter === f.id ? 'active' : ''}
-              onClick={() => setFilter(f.id)}
-            >
-              {t(f.label)}
-              <span className="count">{total[f.id]}</span>
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label={t('colStatus')}
+          value={filter}
+          onChange={setFilter}
+          options={FILTERS.map((f) => ({ id: f.id, label: t(f.label), count: total[f.id] }))}
+        />
+        <ProjectSelect projects={projects} value={activeProject} onChange={setProject} />
       </div>
+      </header>
 
-      <main className="content">
+      <main className="list">
         {loadFailed ? (
           <Empty title={t('loadError')} />
         ) : !loaded ? null : keys.length === 0 ? (
-          <Empty title={t('emptyTitle')} body={t('emptyBody')} />
+          <Empty title={t('emptyTitle')} body={t('emptyBody')}>
+            <button className="btn btn-primary" onClick={() => setCreating(true)}>
+              <Plus size={16} aria-hidden />
+              {t('newKey')}
+            </button>
+          </Empty>
         ) : rows.length === 0 ? (
           <Empty title={t('noResultsTitle')} body={t('noResultsBody')} />
         ) : (
@@ -101,43 +151,54 @@ export function KeysView() {
             <div className="row head" role="row">
               <SortHeader label={t('colName')} sortKey="name" sort={sort} onSort={toggleSort} />
               <SortHeader label={t('colStatus')} sortKey="status" sort={sort} onSort={toggleSort} />
-              <span role="columnheader">{t('colProjects')}</span>
-              <span role="columnheader" />
+              <span className="cell-projects" role="columnheader">
+                {t('colProjects')}
+              </span>
+              <span className="cell-actions" role="columnheader" />
             </div>
-            {rows.map((slot) => (
-              <div className="row" role="row" key={slot.name}>
-                <span className="name" role="cell">
+            {rows.map((slot, i) => (
+              <div className="row" role="row" key={slot.name} style={{ '--i': i } as CSSProperties}>
+                <span className="name cell-name" role="cell">
                   <KeyRound size={15} aria-hidden />
-                  <code>{slot.name}</code>
+                  <code title={slot.name}>{slot.name}</code>
                 </span>
-                <span role="cell">
+                <span className="cell-status" role="cell">
                   <StatusPill hasValue={slot.hasValue} />
                 </span>
-                <span role="cell">
+                <span className="cell-projects" role="cell">
                   <ProjectChips projects={slot.projects} />
                 </span>
-                <span className="actions" role="cell">
+                {/* Secondary actions as quiet icons; the main one (add or reveal) at the edge. */}
+                <span className="actions cell-actions" role="cell">
+                  {slot.hasValue && (
+                    <IconButton label={t('changeValue')} onClick={() => api.openPrompt(slot.name)}>
+                      <RotateCw size={15} aria-hidden />
+                    </IconButton>
+                  )}
+                  {/* Always next to the main button, so it sits in the same place in every row. */}
+                  <IconButton label={t('assignProject')} onClick={() => setAssigning(slot)}>
+                    <FolderPlus size={15} aria-hidden />
+                  </IconButton>
                   {slot.hasValue ? (
-                    <button className="btn btn-sm" onClick={() => api.openPrompt(slot.name)}>
-                      <RotateCw size={14} aria-hidden />
-                      {t('changeValue')}
-                    </button>
+                    <>
+                      <button className="btn btn-sm" onClick={() => setRevealing(slot.name)} title={t('revealValue')}>
+                        <Eye size={14} aria-hidden />
+                        {t('show')}
+                      </button>
+                    </>
                   ) : (
                     <button className="btn btn-sm btn-primary" onClick={() => api.openPrompt(slot.name)}>
                       <Plus size={14} aria-hidden />
                       {t('addValue')}
                     </button>
                   )}
-                  <button className="btn btn-sm" onClick={() => setAssigning(slot)}>
-                    <FolderPlus size={14} aria-hidden />
-                    {t('assignProject')}
-                  </button>
                 </span>
               </div>
             ))}
           </div>
         )}
       </main>
+      </div>
 
       <footer className="footer">
         <ShieldCheck size={14} aria-hidden />
@@ -145,6 +206,8 @@ export function KeysView() {
       </footer>
 
       {assigning && <AssignDialog slot={assigning} onClose={() => setAssigning(null)} />}
+      {creating && <NewKeyDialog onClose={() => setCreating(false)} />}
+      {revealing && <RevealDialog name={revealing} onClose={closeReveal} />}
     </div>
   )
 }
@@ -160,7 +223,7 @@ function SortHeader(props: {
   return (
     <button
       role="columnheader"
-      className={`sort ${active ? 'sort-active' : ''}`}
+      className={`sort cell-${props.sortKey} ${active ? 'sort-active' : ''}`}
       onClick={() => props.onSort(props.sortKey)}
       aria-sort={active ? (props.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
     >
@@ -170,14 +233,21 @@ function SortHeader(props: {
   )
 }
 
-function Empty({ title, body }: { title: string; body?: string }) {
+function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button className="btn btn-sm btn-icon btn-ghost" onClick={onClick} title={label} aria-label={label}>
+      {children}
+    </button>
+  )
+}
+
+function Empty({ title, body, children }: { title: string; body?: string; children?: ReactNode }) {
   return (
     <div className="empty">
-      <span className="icon-badge icon-badge-lg">
-        <KeyRound size={22} aria-hidden />
-      </span>
+      <Logo size={64} />
       <h2>{title}</h2>
       {body && <p className="muted">{body}</p>}
+      {children}
     </div>
   )
 }

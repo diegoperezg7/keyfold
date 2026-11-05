@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="660" height="400" viewBox="0 0 660 400">
+  <!-- DMG window content (660x400; the window is 432 tall to fit the title bar).
+       background-art.png is the illustrated backdrop (1320x800). On top: a light halo behind
+       each icon so the raspberry app icon stands out on the dark backdrop, and the text.
+       Icons are placed by tauri.conf.json at (180,190) and (480,190). -->
+  <defs>
+    <radialGradient id="halo">
+      <stop offset="0" stop-color="#ffe3ee" stop-opacity="0.55"/>
+      <stop offset="0.45" stop-color="#ff8fb7" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#ff8fb7" stop-opacity="0"/>
+    </radialGradient>
+    <style>
+      text { font-family: Inter, -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+    </style>
+  </defs>
+
+  <image href="background-art.png" width="660" height="400"/>
+
+  <circle cx="180" cy="190" r="120" fill="url(#halo)"/>
+  <circle cx="480" cy="190" r="100" fill="url(#halo)" opacity="0.6"/>
+
+  <!-- Finder always draws icon labels in black; light pills keep them readable. -->
+  <g fill="#fff3f8" fill-opacity="0.88" stroke="#ffffff" stroke-opacity="0.6">
+    <rect x="136" y="261" width="88" height="26" rx="13"/>
+    <rect x="420" y="261" width="120" height="26" rx="13"/>
+  </g>
+
+  <text x="330" y="54" text-anchor="middle" font-size="22" font-weight="700" fill="#ffffff" letter-spacing="-0.2">Keyfold</text>
+  <text x="330" y="80" text-anchor="middle" font-size="13" fill="#f7c6d8">Drag the app to Applications to install</text>
+  <text x="330" y="380" text-anchor="middle" font-size="12" fill="#f7c6d8">Your agent gets the name. <tspan fill="#ff6fa3" font-weight="600">Never the key.</tspan></text>
+</svg>

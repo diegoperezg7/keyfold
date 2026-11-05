@@ -1,5 +1,5 @@
 [package]
-name = "llavero-core"
+name = "keyfold-core"
 version = "0.1.0"
 edition = "2021"
 description = "Key vault core: names and projects in a registry, values only in the OS credential store."
@@ -14,4 +14,4 @@ security-framework = "3.7"
 
 # Windows Credential Manager (official Microsoft bindings).
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Credentials"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Credentials", "Win32_Globalization"] } # gitleaks:allow (feature names, not a secret)

@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Mutex;
 
-/// Same service as the Swift version, so keys stored there keep working.
+/// Keychain service of the original prototype ("Llavero"). Kept on purpose: changing it
+/// would orphan every key already stored. It is internal and never shown to users.
 pub const DEFAULT_SERVICE: &str = "com.diego.llavero";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -33,7 +34,7 @@ pub fn system_store(service: &str) -> Box<dyn SecretStore> {
     #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = service;
-        panic!("llavero: no credential store for this OS yet")
+        panic!("keyfold: no credential store for this OS yet")
     }
 }
 

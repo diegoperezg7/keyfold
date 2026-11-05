@@ -2,14 +2,14 @@
 //! Same tools and contract as the Swift version: no tool ever returns a value.
 
 use crate::prompt;
-use llavero_core::{Config, Llavero, LlaveroError, SlotInfo};
+use keyfold_core::{Config, Keyfold, KeyfoldError, SlotInfo};
 use serde_json::{json, Map, Value};
 use std::io::{BufRead, Write};
 
 const SUPPORTED_VERSIONS: [&str; 4] = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
 const USAGE_NOTE: &str = "Never ask the user to paste a key into the chat or into a file. \
-To run the project with its keys, use the shell: `llavero run --project <project> -- <command>`. \
+To run the project with its keys, use the shell: `keyfold run --project <project> -- <command>`. \
 Do not write values into .env files; the keys are injected at run time.";
 
 fn tools() -> Value {
@@ -22,7 +22,7 @@ fn tools() -> Value {
         },
         {
             "name": "create_secret",
-            "description": format!("Create a slot for an API key (e.g. EXA_API_KEY), optionally assign it to a project, and open a native window where the user pastes the value. Blocks until the user saves or cancels. Returns only the reference llavero://NAME. {USAGE_NOTE}"),
+            "description": format!("Create a slot for an API key (e.g. EXA_API_KEY), optionally assign it to a project, and open a native window where the user pastes the value. Blocks until the user saves or cancels. Returns only the reference keyfold://NAME. {USAGE_NOTE}"),
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -40,7 +40,7 @@ fn tools() -> Value {
         },
         {
             "name": "assign_secret",
-            "description": format!("Assign an existing key to a project so `llavero run --project <project>` injects it. {USAGE_NOTE}"),
+            "description": format!("Assign an existing key to a project so `keyfold run --project <project>` injects it. {USAGE_NOTE}"),
             "inputSchema": {
                 "type": "object",
                 "properties": { "name": { "type": "string" }, "project": { "type": "string" } },
@@ -52,12 +52,12 @@ fn tools() -> Value {
 
 enum ToolError {
     Message(String),
-    Llavero(LlaveroError),
+    Keyfold(KeyfoldError),
 }
 
-impl From<LlaveroError> for ToolError {
-    fn from(e: LlaveroError) -> Self {
-        Self::Llavero(e)
+impl From<KeyfoldError> for ToolError {
+    fn from(e: KeyfoldError) -> Self {
+        Self::Keyfold(e)
     }
 }
 
@@ -72,7 +72,7 @@ fn string_arg<'a>(args: &'a Map<String, Value>, key: &str) -> Result<&'a str, To
         .ok_or_else(|| ToolError::Message(format!("Missing argument: {key}")))
 }
 
-fn call_tool(config: &Config, l: &Llavero, name: &str, args: &Map<String, Value>) -> Result<Value, ToolError> {
+fn call_tool(config: &Config, l: &Keyfold, name: &str, args: &Map<String, Value>) -> Result<Value, ToolError> {
     match name {
         "list_secrets" => {
             let project = args.get("project").and_then(Value::as_str);
@@ -112,7 +112,7 @@ fn tool_result(structured: Value, is_error: bool) -> Value {
     })
 }
 
-fn handle(config: &Config, l: &Llavero, method: &str, params: &Map<String, Value>) -> Result<Value, (i64, String)> {
+fn handle(config: &Config, l: &Keyfold, method: &str, params: &Map<String, Value>) -> Result<Value, (i64, String)> {
     match method {
         "initialize" => {
             let requested = params.get("protocolVersion").and_then(Value::as_str).unwrap_or("");
@@ -120,7 +120,7 @@ fn handle(config: &Config, l: &Llavero, method: &str, params: &Map<String, Value
             Ok(json!({
                 "protocolVersion": version,
                 "capabilities": { "tools": {} },
-                "serverInfo": { "name": "llavero", "version": env!("CARGO_PKG_VERSION") },
+                "serverInfo": { "name": "keyfold", "version": env!("CARGO_PKG_VERSION") },
                 "instructions": format!("Local API key vault. Keys are referenced by name; values stay in the OS credential store and are never returned. {USAGE_NOTE}")
             }))
         }
@@ -133,7 +133,7 @@ fn handle(config: &Config, l: &Llavero, method: &str, params: &Map<String, Value
             Ok(match call_tool(config, l, name, args) {
                 Ok(v) => tool_result(v, false),
                 Err(ToolError::Message(m)) => tool_result(json!({ "error": m }), true),
-                Err(ToolError::Llavero(e)) => tool_result(json!({ "error": e.to_string() }), true),
+                Err(ToolError::Keyfold(e)) => tool_result(json!({ "error": e.to_string() }), true),
             })
         }
         other => Err((-32601, format!("Method not found: {other}"))),
@@ -142,7 +142,7 @@ fn handle(config: &Config, l: &Llavero, method: &str, params: &Map<String, Value
 
 /// Reads requests from stdin until EOF.
 pub fn serve(config: &Config) -> i32 {
-    let l = Llavero::open(config);
+    let l = Keyfold::open(config);
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
     for line in stdin.lock().lines() {
