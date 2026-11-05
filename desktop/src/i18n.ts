@@ -74,6 +74,18 @@ const es = {
   placeholderHint: 'Esto parece un ejemplo, no una clave real. Revísalo antes de guardar.',
   typedHint: 'Escrito a mano: pulsa Guardar para confirmar. Intro solo guarda lo que pegas.',
   promptWarning: 'Pega solo claves que hayas pedido tú. Si no esperabas esta ventana, cancela.',
+  updateAvailable: 'Keyfold {version} disponible',
+  updateBody: 'Se descarga, se instala y Keyfold se reinicia.',
+  updateInstall: 'Actualizar',
+  updateLater: 'Más tarde',
+  updateDownloading: 'Descargando… {percent}',
+  updateInstalling: 'Instalando. Keyfold se reiniciará.',
+  updateError: 'No se pudo actualizar. Inténtalo de nuevo.',
+  retry: 'Reintentar',
+  updatedTitle: 'Keyfold {version} instalado',
+  updatedBody: 'La nueva versión se ha descargado e instalado correctamente.',
+  updatedNotes: 'Novedades',
+  updatedOk: 'Entendido',
 } as const
 
 export type Key = keyof typeof es
@@ -149,6 +161,18 @@ const en: Record<Key, string> = {
   placeholderHint: 'This looks like an example, not a real key. Check it before saving.',
   typedHint: 'Typed by hand: click Save to confirm. Enter only saves what you paste.',
   promptWarning: 'Only paste keys you asked for. If you did not expect this window, cancel.',
+  updateAvailable: 'Keyfold {version} is available',
+  updateBody: 'It downloads, installs and Keyfold restarts.',
+  updateInstall: 'Update',
+  updateLater: 'Later',
+  updateDownloading: 'Downloading… {percent}',
+  updateInstalling: 'Installing. Keyfold will restart.',
+  updateError: 'Could not update. Try again.',
+  retry: 'Retry',
+  updatedTitle: 'Keyfold {version} installed',
+  updatedBody: 'The new version was downloaded and installed successfully.',
+  updatedNotes: 'What’s new',
+  updatedOk: 'Got it',
 }
 
 const dictionaries: Record<Lang, Record<Key, string>> = { es, en }

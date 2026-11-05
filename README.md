@@ -108,18 +108,33 @@ Open it once (`open -a Keyfold`). It stays in the menu bar while it runs, with q
 the keys that are waiting for a value, a new key, and connecting your agent. Closing the window
 does not quit it; use **Quit Keyfold** in that menu.
 
+### Updates
+
+A Keyfold installed from a release DMG updates itself. When a newer release is out, the keys
+window shows it in a corner: **Update** downloads it with a progress bar, checks its signature,
+installs it and restarts. Back in the app, a window confirms the install and lists what changed.
+Builds made from source do not update themselves; pull and build again.
+
 ### Signed DMG (maintainers)
 
 `desktop/scripts/release-macos.sh` builds the app and a drag-to-install DMG, signs both with your
 Developer ID and, if you give it a notarytool profile, notarizes and staples the DMG.
-Credentials stay in your keychain; nothing secret goes in the repo.
+It also signs the update archive with the updater key and writes the `latest.json` that installed
+copies read from the latest GitHub release. Credentials stay in your keychain or home folder;
+nothing secret goes in the repo.
 
 ```sh
 xcrun notarytool store-credentials keyfold-notary --apple-id you@example.com --team-id TEAMID   # once
+npx tauri signer generate --ci -w ~/.tauri/keyfold-updater.key                                  # once; back it up
 APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 KEYFOLD_NOTARY_PROFILE=keyfold-notary \
+KEYFOLD_RELEASE_NOTES=notes.txt \
 ./scripts/release-macos.sh
 ```
+
+Bump `version` in `src-tauri/tauri.conf.json` first, then publish with the `gh release create`
+command the script prints. The updater only accepts archives signed with the key whose public
+half is in `tauri.conf.json`: lose the private key and installed copies stop updating.
 
 <p align="center">
   <img src="docs/images/dmg-window.png" width="560" alt="Keyfold installer window: drag the app to Applications">

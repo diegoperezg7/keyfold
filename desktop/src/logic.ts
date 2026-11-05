@@ -91,3 +91,9 @@ export function shannonEntropy(s: string): number {
   }
   return h
 }
+
+/** Whole percent of an update download, capped at 100; null when the size is unknown. */
+export function downloadPercent(downloaded: number, total: number | null): number | null {
+  if (!total || total <= 0) return null
+  return Math.min(100, Math.floor((downloaded / total) * 100))
+}
