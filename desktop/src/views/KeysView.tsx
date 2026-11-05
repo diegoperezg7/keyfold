@@ -1,6 +1,6 @@
 import { listen } from '@tauri-apps/api/event'
 import { AlertCircle, ArrowDown, ArrowUp, CheckCircle2, Eye, FolderPlus, KeyRound, Plus, RefreshCw, RotateCw, Search, ShieldCheck, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { api, boot, type Notice, type SlotInfo } from '../api'
 import { AssignDialog } from '../components/AssignDialog'
 import { Logo } from '../components/Logo'
@@ -64,16 +64,21 @@ export function KeysView() {
 
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <Logo size={40} />
-          <div>
-            <h1>Keyfold</h1>
-            <p className="muted small">{summary}</p>
+      <div className="content">
+      {/* Glass header: the list scrolls under it. The top row is the window's drag area. */}
+      <header className="header">
+      <div className="topbar" data-tauri-drag-region>
+        <div className="brand" data-tauri-drag-region>
+          <Logo size={30} />
+          <div data-tauri-drag-region>
+            <h1 data-tauri-drag-region>Keyfold</h1>
+            <p className="muted small" data-tauri-drag-region>
+              {summary}
+            </p>
           </div>
         </div>
         <div className="topbar-actions">
-          <button className="btn btn-icon" onClick={() => load()} title={t('refresh')} aria-label={t('refresh')}>
+          <button className="btn btn-icon btn-ghost" onClick={() => load()} title={t('refresh')} aria-label={t('refresh')}>
             <RefreshCw size={16} aria-hidden />
           </button>
           <button className="btn btn-primary" onClick={() => setCreating(true)}>
@@ -81,7 +86,7 @@ export function KeysView() {
             {t('newKey')}
           </button>
         </div>
-      </header>
+      </div>
 
       {notice && (
         <div className={notice.ok ? 'notice' : 'notice notice-error'} role="status">
@@ -123,12 +128,18 @@ export function KeysView() {
           ))}
         </div>
       </div>
+      </header>
 
-      <main className="content">
+      <main className="list">
         {loadFailed ? (
           <Empty title={t('loadError')} />
         ) : !loaded ? null : keys.length === 0 ? (
-          <Empty title={t('emptyTitle')} body={t('emptyBody')} />
+          <Empty title={t('emptyTitle')} body={t('emptyBody')}>
+            <button className="btn btn-primary" onClick={() => setCreating(true)}>
+              <Plus size={16} aria-hidden />
+              {t('newKey')}
+            </button>
+          </Empty>
         ) : rows.length === 0 ? (
           <Empty title={t('noResultsTitle')} body={t('noResultsBody')} />
         ) : (
@@ -139,8 +150,8 @@ export function KeysView() {
               <span role="columnheader">{t('colProjects')}</span>
               <span role="columnheader" />
             </div>
-            {rows.map((slot) => (
-              <div className="row" role="row" key={slot.name}>
+            {rows.map((slot, i) => (
+              <div className="row" role="row" key={slot.name} style={{ '--i': i } as CSSProperties}>
                 <span className="name" role="cell">
                   <KeyRound size={15} aria-hidden />
                   <code>{slot.name}</code>
@@ -151,33 +162,26 @@ export function KeysView() {
                 <span role="cell">
                   <ProjectChips projects={slot.projects} />
                 </span>
+                {/* Secondary actions as quiet icons; the main one (add or reveal) at the edge. */}
                 <span className="actions" role="cell">
+                  <IconButton label={t('assignProject')} onClick={() => setAssigning(slot)}>
+                    <FolderPlus size={15} aria-hidden />
+                  </IconButton>
                   {slot.hasValue ? (
-                    <button className="btn btn-sm" onClick={() => api.openPrompt(slot.name)}>
-                      <RotateCw size={14} aria-hidden />
-                      {t('changeValue')}
-                    </button>
+                    <>
+                      <IconButton label={t('changeValue')} onClick={() => api.openPrompt(slot.name)}>
+                        <RotateCw size={15} aria-hidden />
+                      </IconButton>
+                      <button className="btn btn-sm" onClick={() => setRevealing(slot.name)} title={t('revealValue')}>
+                        <Eye size={14} aria-hidden />
+                        {t('show')}
+                      </button>
+                    </>
                   ) : (
                     <button className="btn btn-sm btn-primary" onClick={() => api.openPrompt(slot.name)}>
                       <Plus size={14} aria-hidden />
                       {t('addValue')}
                     </button>
-                  )}
-                  <button className="btn btn-sm" onClick={() => setAssigning(slot)}>
-                    <FolderPlus size={14} aria-hidden />
-                    {t('assignProject')}
-                  </button>
-                  {slot.hasValue ? (
-                    <button
-                      className="btn btn-sm btn-icon"
-                      onClick={() => setRevealing(slot.name)}
-                      title={t('revealValue')}
-                      aria-label={t('revealValue')}
-                    >
-                      <Eye size={14} aria-hidden />
-                    </button>
-                  ) : (
-                    <span className="btn-icon-spacer" aria-hidden />
                   )}
                 </span>
               </div>
@@ -185,6 +189,7 @@ export function KeysView() {
           </div>
         )}
       </main>
+      </div>
 
       <footer className="footer">
         <ShieldCheck size={14} aria-hidden />
@@ -219,12 +224,21 @@ function SortHeader(props: {
   )
 }
 
-function Empty({ title, body }: { title: string; body?: string }) {
+function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button className="btn btn-sm btn-icon btn-ghost" onClick={onClick} title={label} aria-label={label}>
+      {children}
+    </button>
+  )
+}
+
+function Empty({ title, body, children }: { title: string; body?: string; children?: ReactNode }) {
   return (
     <div className="empty">
-      <Logo size={56} />
+      <Logo size={64} />
       <h2>{title}</h2>
       {body && <p className="muted">{body}</p>}
+      {children}
     </div>
   )
 }

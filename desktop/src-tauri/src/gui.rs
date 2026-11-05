@@ -7,6 +7,7 @@
 
 use crate::prompt::PromptRequest;
 use crate::tray;
+use crate::unlock::{self, SessionUnlock};
 use keyfold_core::{l10n, Config, Keyfold, SlotInfo};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
@@ -20,6 +21,8 @@ struct AppState {
     config: Config,
     /// Set only in prompt mode: where to report that the value was saved.
     prompt: Option<PromptRequest>,
+    /// Touch ID / password before the first reveal while the keys window is open.
+    unlock: SessionUnlock,
 }
 
 impl AppState {
@@ -63,15 +66,34 @@ pub fn show_main(app: &AppHandle, action: Option<&str>, notice: Option<&Notice>)
         return Ok(());
     }
     let boot = Boot { view: "keys", name: None, project: None, lang: l10n::lang(), action, notice };
-    let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .initialization_script(boot_script(&boot))
         .title("Keyfold")
-        .inner_size(980.0, 620.0)
-        .min_inner_size(760.0, 420.0)
+        .inner_size(980.0, 640.0)
+        .min_inner_size(760.0, 440.0)
         .center()
-        .focused(true)
-        .build()?;
+        .focused(true);
+    // Center the window controls in the 56 px header.
+    #[cfg(target_os = "macos")]
+    let builder = builder.traffic_light_position(tauri::LogicalPosition::new(18.0, 21.0));
+    let window = unified_title_bar(builder).build()?;
+    // Closing the window ends the session: the next reveal asks for Touch ID again.
+    let handle = app.clone();
+    window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::Destroyed) {
+            handle.state::<AppState>().unlock.lock();
+        }
+    });
     window.set_focus()
+}
+
+/// macOS: content runs under a transparent title bar, so the header and the traffic lights
+/// share one surface (the system draws the window controls, with Liquid Glass on macOS 26+).
+fn unified_title_bar<'a>(builder: WebviewWindowBuilder<'a, tauri::Wry, AppHandle>) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
+    #[cfg(target_os = "macos")]
+    return builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+    #[cfg(not(target_os = "macos"))]
+    builder
 }
 
 /// Opens the paste window for one key (keys window buttons and the menu bar).
@@ -139,11 +161,15 @@ fn clear_clipboard_if_holds(_value: &str) {}
 /// only on a click there: refused in prompt mode, and the CLI and MCP have no equivalent.
 /// While a value is shown the window is left out of screen capture, so an agent running
 /// `screencapture` cannot read it. `hide_value` lifts that.
+/// The first reveal while the window is open asks for Touch ID or the password; "locked"
+/// means the user cancelled. Async so the wait does not block the UI thread.
 #[tauri::command]
-fn reveal_value(window: WebviewWindow, state: State<AppState>, name: String) -> Result<Option<String>, String> {
+async fn reveal_value(window: WebviewWindow, state: State<'_, AppState>, name: String) -> Result<Option<String>, String> {
     if state.prompt.is_some() || window.label() != "main" {
         return Err("not available in this window".into());
     }
+    let reason = l10n::t(&format!("mostrar el valor de {name}"), &format!("show the value of {name}"));
+    state.unlock.ensure(unlock::is_today, || unlock::authenticate(&reason)).map_err(|_| "locked".to_string())?;
     window.set_content_protected(true).map_err(|e| e.to_string())?;
     state.keyfold().reveal(&name).map_err(|e| e.to_string())
 }
@@ -176,17 +202,17 @@ fn open_prompt(app: AppHandle, name: String) -> Result<(), String> {
 }
 
 fn prompt_window(app: &AppHandle, label: &str, boot: &Boot) -> tauri::Result<WebviewWindow> {
-    let window = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
+    let builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
         .initialization_script(boot_script(boot))
         .title("Keyfold")
-        .inner_size(460.0, 330.0)
+        .inner_size(460.0, 360.0)
         .resizable(false)
         .minimizable(false)
         .maximizable(false)
         .always_on_top(true)
         .center()
-        .focused(true)
-        .build()?;
+        .focused(true);
+    let window = unified_title_bar(builder).build()?;
     window.set_focus()?;
     Ok(window)
 }
@@ -197,7 +223,7 @@ pub fn run(config: Config, mode: Mode) -> i32 {
         Mode::Keys => None,
     };
     let app = tauri::Builder::default()
-        .manage(AppState { config, prompt: prompt.clone() })
+        .manage(AppState { config, prompt: prompt.clone(), unlock: SessionUnlock::default() })
         .invoke_handler(tauri::generate_handler![list_keys, create_key, assign_key, save_secret, reveal_value, hide_value, finish_prompt, open_prompt])
         .setup(move |app| {
             let handle = &app.handle().clone();

@@ -62,6 +62,7 @@ export function PromptView({ name, project }: { name: string; project?: string |
 
   return (
     <form className="prompt" onSubmit={onSubmit}>
+      <div className="drag-strip" data-tauri-drag-region />
       <div className="prompt-head">
         <Logo size={44} />
         <div>

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Least privilege: only event listening (keys-changed). App commands never return secret values.",
+  "description": "Least privilege: event listening (keys-changed, menu bar) and dragging the window by its header. Values only reach the UI through the reveal button, after Touch ID.",
   "windows": ["*"],
-  "permissions": ["core:event:default"]
+  "permissions": ["core:event:default", "core:window:allow-start-dragging"]
 }

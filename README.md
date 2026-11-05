@@ -75,8 +75,10 @@ No key in the repo, no key in the chat, no `.env` to pass around.
 ### In the app
 
 - **New key** creates a key by hand and opens the paste window, no agent needed.
-- **The eye** shows a stored value to you. It hides after 30 seconds, and while it is shown the window
-  is left out of screenshots. Your agent has no way to do this: there is no CLI command or MCP tool for it.
+- **Show** displays a stored value to you. The first time after you open the window (and again each
+  day) it asks for Touch ID or your password. The value hides after 30 seconds, and while it is shown
+  the window is left out of screenshots. Your agent has no way to do this: there is no CLI command
+  or MCP tool for it.
 
 ## Install
 

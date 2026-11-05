@@ -10,6 +10,7 @@ mod gui;
 mod mcp;
 mod prompt;
 mod tray;
+mod unlock;
 
 use keyfold_core::Config;
 

@@ -16,3 +16,11 @@ keyfold-core = { path = "../crates/keyfold-core" }
 tauri = { version = "2.12", features = ["tray-icon", "image-png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Touch ID / account password before revealing a value. objc2, block2 and objc2-foundation
+# already come with Tauri; objc2-local-authentication is the only new crate.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSError", "NSCalendar", "NSDate"] }
+objc2-local-authentication = { version = "0.3", default-features = false, features = ["std", "block2", "LAContext", "LAPublicDefines"] }
