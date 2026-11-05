@@ -13,6 +13,15 @@ export interface Boot {
   name?: string | null
   project?: string | null
   lang?: 'es' | 'en'
+  /** "new": open the New key dialog (from the menu bar). */
+  action?: 'new' | null
+  /** One-line result to show once (menu bar "Connect agent"). */
+  notice?: Notice | null
+}
+
+export interface Notice {
+  ok: boolean
+  text: string
 }
 
 declare global {

@@ -6,6 +6,7 @@
 //! button of the keys window (`reveal_value`), on an explicit click.
 
 use crate::prompt::PromptRequest;
+use crate::tray;
 use keyfold_core::{l10n, Config, Keyfold, SlotInfo};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
@@ -34,6 +35,52 @@ struct Boot<'a> {
     name: Option<&'a str>,
     project: Option<&'a str>,
     lang: &'a str,
+    /// "new": open the New key dialog (menu bar, when the window had to be created).
+    action: Option<&'a str>,
+    /// A message to show once (the result of "Connect agent").
+    notice: Option<&'a Notice>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct Notice {
+    pub ok: bool,
+    pub text: String,
+}
+
+/// Shows the keys window, creating it if it was closed. With `action` "new" it opens the
+/// New key dialog; `notice` shows a one-line message.
+pub fn show_main(app: &AppHandle, action: Option<&str>, notice: Option<&Notice>) -> tauri::Result<()> {
+    if let Some(window) = app.get_webview_window("main") {
+        window.show()?;
+        window.unminimize()?;
+        window.set_focus()?;
+        if action == Some("new") {
+            app.emit_to("main", "open-new-key", ())?;
+        }
+        if let Some(notice) = notice {
+            app.emit_to("main", "notice", notice)?;
+        }
+        return Ok(());
+    }
+    let boot = Boot { view: "keys", name: None, project: None, lang: l10n::lang(), action, notice };
+    let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+        .initialization_script(boot_script(&boot))
+        .title("Keyfold")
+        .inner_size(980.0, 620.0)
+        .min_inner_size(760.0, 420.0)
+        .center()
+        .focused(true)
+        .build()?;
+    window.set_focus()
+}
+
+/// Opens the paste window for one key (keys window buttons and the menu bar).
+pub fn open_paste_window(app: &AppHandle, name: &str) -> Result<(), String> {
+    open_prompt(app.clone(), name.to_string())
+}
+
+pub fn list_for_tray(app: &AppHandle) -> Vec<SlotInfo> {
+    app.state::<AppState>().keyfold().list(None).unwrap_or_default()
 }
 
 fn boot_script(boot: &Boot) -> String {
@@ -124,7 +171,7 @@ fn open_prompt(app: AppHandle, name: String) -> Result<(), String> {
     if let Some(existing) = app.get_webview_window(&label) {
         return existing.set_focus().map_err(|e| e.to_string());
     }
-    let boot = Boot { view: "prompt", name: Some(&name), project: None, lang: l10n::lang() };
+    let boot = Boot { view: "prompt", name: Some(&name), project: None, lang: l10n::lang(), action: None, notice: None };
     prompt_window(&app, &label, &boot).map(|_| ()).map_err(|e| e.to_string())
 }
 
@@ -165,29 +212,33 @@ pub fn run(config: Config, mode: Mode) -> i32 {
                         name: Some(&request.name),
                         project: request.project.as_deref(),
                         lang: l10n::lang(),
+                        action: None,
+                        notice: None,
                     };
                     prompt_window(handle, "prompt", &boot)?;
                 }
                 None => {
-                    let boot = Boot { view: "keys", name: None, project: None, lang: l10n::lang() };
-                    let window = WebviewWindowBuilder::new(handle, "main", WebviewUrl::App("index.html".into()))
-                        .initialization_script(boot_script(&boot))
-                        .title("Keyfold")
-                        .inner_size(980.0, 620.0)
-                        .min_inner_size(760.0, 420.0)
-                        .center()
-                        .focused(true)
-                        .build()?;
-                    window.set_focus()?;
+                    show_main(handle, None, None)?;
+                    tray::install(handle)?;
                 }
             }
             Ok(())
         })
         .build(tauri::generate_context!());
 
+    let keys_mode = matches!(mode, Mode::Keys);
     match app {
         Ok(app) => {
-            app.run(|_, _: RunEvent| {});
+            app.run(move |app, event| match event {
+                // The keys app lives in the menu bar: closing its window does not quit it.
+                // "Quit Keyfold" in the menu exits with a code, so it is not stopped here.
+                RunEvent::ExitRequested { api, code: None, .. } if keys_mode => api.prevent_exit(),
+                #[cfg(target_os = "macos")]
+                RunEvent::Reopen { .. } if keys_mode => {
+                    let _ = show_main(app, None, None);
+                }
+                _ => {}
+            });
             0
         }
         Err(e) => {

@@ -196,6 +196,38 @@ input {
   padding: 18px 24px 14px;
 }
 
+/* One-line result from the menu bar ("Connect agent"). */
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 24px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--ok-soft);
+  font-size: 13px;
+  animation: rise 0.16s ease-out;
+}
+
+.notice svg {
+  flex: none;
+  color: var(--ok);
+}
+
+.notice span {
+  flex: 1;
+  user-select: text;
+}
+
+.notice-error {
+  background: var(--accent-soft);
+}
+
+.notice-error svg {
+  color: var(--danger);
+}
+
 /* Keeps the action buttons aligned in rows without the reveal button. */
 .btn-icon-spacer {
   flex: none;

@@ -1,7 +1,7 @@
 import { listen } from '@tauri-apps/api/event'
-import { ArrowDown, ArrowUp, Eye, FolderPlus, KeyRound, Plus, RefreshCw, RotateCw, Search, ShieldCheck, X } from 'lucide-react'
+import { AlertCircle, ArrowDown, ArrowUp, CheckCircle2, Eye, FolderPlus, KeyRound, Plus, RefreshCw, RotateCw, Search, ShieldCheck, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api, type SlotInfo } from '../api'
+import { api, boot, type Notice, type SlotInfo } from '../api'
 import { AssignDialog } from '../components/AssignDialog'
 import { Logo } from '../components/Logo'
 import { NewKeyDialog } from '../components/NewKeyDialog'
@@ -23,7 +23,22 @@ export function KeysView() {
   const { keys, loaded, loadFailed, search, filter, sort, load, setSearch, setFilter, toggleSort } = useKeys()
   const [assigning, setAssigning] = useState<SlotInfo | null>(null)
   const [revealing, setRevealing] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
+  const [creating, setCreating] = useState(boot.action === 'new')
+  const [notice, setNotice] = useState<Notice | null>(boot.notice ?? null)
+
+  // Menu bar: "New key…" and the result of "Connect agent".
+  useEffect(() => {
+    const stops = [
+      listen('open-new-key', () => setCreating(true)),
+      listen<Notice>('notice', (e) => setNotice(e.payload)),
+    ]
+    return () => stops.forEach((stop) => stop.then((f) => f()))
+  }, [])
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(null), 8000)
+    return () => clearTimeout(timer)
+  }, [notice])
   const closeReveal = useCallback(() => setRevealing(null), [])
   const total = counts(keys)
   const rows = useMemo(() => visibleKeys(keys, search, filter, sort), [keys, search, filter, sort])
@@ -67,6 +82,16 @@ export function KeysView() {
           </button>
         </div>
       </header>
+
+      {notice && (
+        <div className={notice.ok ? 'notice' : 'notice notice-error'} role="status">
+          {notice.ok ? <CheckCircle2 size={16} aria-hidden /> : <AlertCircle size={16} aria-hidden />}
+          <span>{notice.text}</span>
+          <button className="search-clear" onClick={() => setNotice(null)} aria-label="Close">
+            <X size={14} aria-hidden />
+          </button>
+        </div>
+      )}
 
       <div className="toolbar">
         <label className="search">

@@ -1,13 +1,15 @@
 //! One binary, three faces:
 //!   keyfold            / keyfold app  -> desktop window with the keys
 //!   keyfold mcp                       -> MCP server over stdio for coding agents
-//!   keyfold <command>                 -> CLI (create, set, receive, assign, list, run, delete)
+//!   keyfold <command>                 -> CLI (create, set, receive, assign, list, run, delete, connect)
 //! Output contract everywhere: names, references, status and projects. Never a value.
 
 mod cli;
+mod connect;
 mod gui;
 mod mcp;
 mod prompt;
+mod tray;
 
 use keyfold_core::Config;
 

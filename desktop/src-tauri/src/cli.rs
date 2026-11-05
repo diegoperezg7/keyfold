@@ -1,4 +1,4 @@
-use crate::prompt;
+use crate::{connect, prompt};
 use keyfold_core::l10n::t;
 use keyfold_core::redactor::Redactor;
 use keyfold_core::{Config, Keyfold, KeyfoldError, SlotInfo};
@@ -50,6 +50,7 @@ pub fn run(config: &Config, argv: &[String]) -> i32 {
         "list" => list(&keyfold, &args),
         "run" => run_command(&keyfold, &args),
         "delete" => delete(&keyfold, &args),
+        "connect" => return connect_agent(&args),
         _ => Ok(usage()),
     };
     result.unwrap_or_else(|e| fail(&e))
@@ -73,7 +74,8 @@ fn usage() -> i32 {
   keyfold list [--project P]                          lista nombres y estado, nunca valores
   keyfold run --project P -- comando [args...]        ejecuta con las claves del proyecto (salida censurada)
   keyfold delete NOMBRE                               borra la clave y su valor
-  keyfold mcp                                         servidor MCP por stdio para agentes",
+  keyfold mcp                                         servidor MCP por stdio para agentes
+  keyfold connect claude|codex|cursor                 registra este binario como servidor MCP del agente",
             "Usage:
   keyfold                                             open the app
   keyfold create NAME [--project P] [--no-prompt]     create the slot and open the window to paste the value
@@ -83,10 +85,26 @@ fn usage() -> i32 {
   keyfold list [--project P]                          list names and status, never values
   keyfold run --project P -- command [args...]        run with the project's keys (output redacted)
   keyfold delete NAME                                 delete the key and its value
-  keyfold mcp                                         MCP server over stdio for agents",
+  keyfold mcp                                         MCP server over stdio for agents
+  keyfold connect claude|codex|cursor                 register this binary as the agent's MCP server",
         )
     );
     64
+}
+
+/// `keyfold connect claude|codex|cursor`: register this binary as the agent's MCP server.
+fn connect_agent(args: &Arguments) -> i32 {
+    let Some(agent) = first(args).and_then(connect::Agent::parse) else { return usage() };
+    match connect::connect(agent) {
+        Ok(outcome) => {
+            println!("{}", outcome.message());
+            0
+        }
+        Err(message) => {
+            eprintln!("{message}");
+            1
+        }
+    }
 }
 
 fn status(info: &SlotInfo) -> String {

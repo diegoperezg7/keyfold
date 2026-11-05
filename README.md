@@ -80,22 +80,31 @@ No key in the repo, no key in the chat, no `.env` to pass around.
 
 ## Install
 
-There are no signed releases yet, so you build it from source. You need [Rust](https://rustup.rs) and Node.js 22+.
+There are no signed releases yet, so you build it from source. You need:
+
+- [Rust](https://rustup.rs) (stable) and Node.js 22+
+- macOS: the Xcode Command Line Tools (`xcode-select --install`)
+- Windows: the Microsoft C++ Build Tools and WebView2 (preinstalled on Windows 11)
 
 ```sh
 git clone https://github.com/diegoperezg7/keyfold.git
 cd keyfold/desktop
 npm ci
 npx tauri build --bundles app       # macOS: target/release/bundle/macos/Keyfold.app
-# npx tauri build --bundles nsis    # Windows installer
+# npx tauri build --bundles nsis    # Windows: target/release/bundle/nsis/Keyfold_*-setup.exe
 ```
 
-On macOS, move `Keyfold.app` to `/Applications`. The same binary is the app, the CLI and the MCP server:
+On macOS, move the app to Applications. The same binary is the app, the CLI and the MCP server:
 
 ```sh
+ditto target/release/bundle/macos/Keyfold.app /Applications/Keyfold.app
 alias keyfold="/Applications/Keyfold.app/Contents/MacOS/keyfold"
 keyfold list
 ```
+
+Open it once (`open -a Keyfold`). It stays in the menu bar while it runs, with quick access to
+the keys that are waiting for a value, a new key, and connecting your agent. Closing the window
+does not quit it; use **Quit Keyfold** in that menu.
 
 ### Signed DMG (maintainers)
 
@@ -117,6 +126,17 @@ KEYFOLD_NOTARY_PROFILE=keyfold-notary \
 ## Connect your agent
 
 Keyfold speaks [MCP](https://modelcontextprotocol.io) over stdio, so any MCP client can use it.
+One command registers it (or **Connect agent** in the menu bar). It writes the path to the binary
+and nothing else, and running it twice is harmless:
+
+```sh
+keyfold connect claude    # runs `claude mcp add --scope user keyfold ...`
+keyfold connect codex     # adds [mcp_servers.keyfold] to ~/.codex/config.toml
+keyfold connect cursor    # adds "keyfold" to ~/.cursor/mcp.json
+```
+
+Restart the agent afterwards. Your agent can run this itself too: it is a setup step, it never
+touches a key. To do it by hand instead:
 
 **Claude Code**
 
@@ -132,7 +152,7 @@ command = "/Applications/Keyfold.app/Contents/MacOS/keyfold"
 args = ["mcp"]
 ```
 
-**Cursor** (`.cursor/mcp.json`)
+**Cursor** (`~/.cursor/mcp.json`, or `.cursor/mcp.json` in one project)
 
 ```json
 { "mcpServers": { "keyfold": { "command": "/Applications/Keyfold.app/Contents/MacOS/keyfold", "args": ["mcp"] } } }
@@ -162,6 +182,7 @@ None of them returns a value. They return the name, the reference, whether a val
 | `keyfold run --project P -- <command>` | Run with the project's keys in the environment, output masked |
 | `keyfold delete NAME` | Delete a key and its value |
 | `keyfold mcp` | MCP server over stdio |
+| `keyfold connect claude\|codex\|cursor` | Register Keyfold as the agent's MCP server |
 
 ## Security
 

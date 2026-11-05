@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 22 22">
+  <!-- Menu bar glyph (template image: macOS tints it). A key tucked into a folded sheet, like the app icon. -->
+  <g fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.5 3.5 H16 a2.5 2.5 0 0 1 2.5 2.5 V16 a2.5 2.5 0 0 1 -2.5 2.5 H6 a2.5 2.5 0 0 1 -2.5 -2.5 V7.5 Z"/>
+    <path d="M3.5 11 L18.5 18"/>
+    <circle cx="9" cy="8.6" r="2.3"/>
+    <path d="M10.7 10.2 L14.2 13.1 M12.6 11.8 L13.6 10.6"/>
+  </g>
+</svg>
