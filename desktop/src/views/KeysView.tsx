@@ -147,31 +147,36 @@ export function KeysView() {
             <div className="row head" role="row">
               <SortHeader label={t('colName')} sortKey="name" sort={sort} onSort={toggleSort} />
               <SortHeader label={t('colStatus')} sortKey="status" sort={sort} onSort={toggleSort} />
-              <span role="columnheader">{t('colProjects')}</span>
-              <span role="columnheader" />
+              <span className="cell-projects" role="columnheader">
+                {t('colProjects')}
+              </span>
+              <span className="cell-actions" role="columnheader" />
             </div>
             {rows.map((slot, i) => (
               <div className="row" role="row" key={slot.name} style={{ '--i': i } as CSSProperties}>
-                <span className="name" role="cell">
+                <span className="name cell-name" role="cell">
                   <KeyRound size={15} aria-hidden />
-                  <code>{slot.name}</code>
+                  <code title={slot.name}>{slot.name}</code>
                 </span>
-                <span role="cell">
+                <span className="cell-status" role="cell">
                   <StatusPill hasValue={slot.hasValue} />
                 </span>
-                <span role="cell">
+                <span className="cell-projects" role="cell">
                   <ProjectChips projects={slot.projects} />
                 </span>
                 {/* Secondary actions as quiet icons; the main one (add or reveal) at the edge. */}
-                <span className="actions" role="cell">
+                <span className="actions cell-actions" role="cell">
+                  {slot.hasValue && (
+                    <IconButton label={t('changeValue')} onClick={() => api.openPrompt(slot.name)}>
+                      <RotateCw size={15} aria-hidden />
+                    </IconButton>
+                  )}
+                  {/* Always next to the main button, so it sits in the same place in every row. */}
                   <IconButton label={t('assignProject')} onClick={() => setAssigning(slot)}>
                     <FolderPlus size={15} aria-hidden />
                   </IconButton>
                   {slot.hasValue ? (
                     <>
-                      <IconButton label={t('changeValue')} onClick={() => api.openPrompt(slot.name)}>
-                        <RotateCw size={15} aria-hidden />
-                      </IconButton>
                       <button className="btn btn-sm" onClick={() => setRevealing(slot.name)} title={t('revealValue')}>
                         <Eye size={14} aria-hidden />
                         {t('show')}
@@ -214,7 +219,7 @@ function SortHeader(props: {
   return (
     <button
       role="columnheader"
-      className={`sort ${active ? 'sort-active' : ''}`}
+      className={`sort cell-${props.sortKey} ${active ? 'sort-active' : ''}`}
       onClick={() => props.onSort(props.sortKey)}
       aria-sort={active ? (props.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
     >

@@ -47,6 +47,9 @@
   --mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
   /* Room for the macOS window controls (set in main.tsx). */
   --titlebar-inset: 0px;
+  --gutter: 20px;
+  /* Two 28 px icon buttons + the 112 px main button + 4 px gaps: the same in every row. */
+  --actions-width: 176px;
   color-scheme: light;
 }
 
@@ -263,33 +266,43 @@ input {
   border-bottom: 1px solid var(--glass-line);
 }
 
+/* Spacing: one side margin (--gutter) everywhere, steps of 4 px. The window controls sit in
+   the top row (gui.rs centers them at y = 64 / 2). */
 .topbar {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 56px;
-  padding: 0 16px 0 calc(16px + var(--titlebar-inset));
+  height: 64px;
+  padding: 0 var(--gutter) 0 calc(var(--gutter) + var(--titlebar-inset));
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  min-width: 0;
+}
+
+.brand > div {
   min-width: 0;
 }
 
 .brand h1 {
-  line-height: 1.15;
+  line-height: 1.2;
 }
 
 .brand p {
+  margin-top: 2px;
+  overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .topbar-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: none;
   margin-left: auto;
 }
 
@@ -297,7 +310,7 @@ input {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 16px 12px;
+  padding: 4px var(--gutter) 16px;
 }
 
 .logo {
@@ -330,7 +343,7 @@ input {
   gap: 8px;
   flex: 1;
   max-width: 360px;
-  height: 32px;
+  height: 34px;
   padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -427,7 +440,7 @@ input {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 0 16px 12px;
+  margin: 0 var(--gutter) 16px;
   padding: 9px 10px 9px 14px;
   border-radius: 999px;
   background: var(--glass-strong);
@@ -457,7 +470,7 @@ input {
 }
 
 .list {
-  padding: 16px 16px 8px;
+  padding: 20px var(--gutter) 8px;
 }
 
 .table {
@@ -470,12 +483,13 @@ input {
 
 .row {
   display: grid;
-  /* Every row is its own grid: fixed tracks keep header and rows aligned. */
-  grid-template-columns: minmax(180px, 1.4fr) 112px minmax(140px, 1fr) 200px;
+  /* Every row is its own grid: the same tracks keep header and rows aligned. */
+  grid-template-columns: minmax(0, 1.4fr) 112px minmax(0, 1fr) var(--actions-width);
+  grid-template-areas: 'name status projects actions';
   align-items: center;
-  gap: 16px;
+  column-gap: 16px;
   min-height: 56px;
-  padding: 0 14px 0 18px;
+  padding: 0 16px 0 20px;
   border-top: 1px solid var(--border);
   transition: background 0.18s var(--ease);
 }
@@ -633,11 +647,66 @@ input {
   margin-bottom: 6px;
 }
 
+.cell-name {
+  grid-area: name;
+}
+
+.cell-status {
+  grid-area: status;
+}
+
+.cell-projects {
+  grid-area: projects;
+  min-width: 0;
+}
+
+.cell-actions {
+  grid-area: actions;
+}
+
+/* Narrow windows: projects go under the name, so the row needs no horizontal scroll. */
+@media (max-width: 860px) {
+  .row {
+    grid-template-columns: minmax(0, 1fr) 112px var(--actions-width);
+    grid-template-areas:
+      'name status actions'
+      'projects status actions';
+    row-gap: 4px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .row.head {
+    grid-template-areas: 'name status actions';
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  .row.head .cell-projects {
+    display: none;
+  }
+
+  .cell-projects .muted {
+    font-size: 12px;
+  }
+
+  .search {
+    max-width: none;
+  }
+}
+
+/* Very narrow: the filter counts give way first. */
+@media (max-width: 700px) {
+  .segmented .count {
+    display: none;
+  }
+}
+
 .footer {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 18px 12px;
+  padding: 12px var(--gutter) 16px;
   color: var(--text-muted);
   font-size: 12px;
 }

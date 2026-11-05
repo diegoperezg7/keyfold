@@ -70,12 +70,12 @@ pub fn show_main(app: &AppHandle, action: Option<&str>, notice: Option<&Notice>)
         .initialization_script(boot_script(&boot))
         .title("Keyfold")
         .inner_size(980.0, 640.0)
-        .min_inner_size(760.0, 440.0)
+        .min_inner_size(600.0, 420.0)
         .center()
         .focused(true);
-    // Center the window controls in the 56 px header.
+    // Center the window controls in the 64 px header (.topbar).
     #[cfg(target_os = "macos")]
-    let builder = builder.traffic_light_position(tauri::LogicalPosition::new(18.0, 21.0));
+    let builder = builder.traffic_light_position(tauri::LogicalPosition::new(20.0, 34.0));
     let window = unified_title_bar(builder).build()?;
     // Closing the window ends the session: the next reveal asks for Touch ID again.
     let handle = app.clone();
