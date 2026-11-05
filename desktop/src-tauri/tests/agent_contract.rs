@@ -238,6 +238,12 @@ fn mcp_tools_never_return_the_value() {
     ]);
     assert_eq!(first.len(), 3, "a notification must get no response");
     assert_eq!(first[0]["result"]["protocolVersion"], "2025-06-18");
+    let instructions = first[0]["result"]["instructions"].as_str().unwrap();
+    let exe = std::fs::canonicalize(env!("CARGO_BIN_EXE_keyfold")).unwrap();
+    assert!(
+        instructions.contains(&exe.display().to_string()) || instructions.contains(env!("CARGO_BIN_EXE_keyfold")),
+        "the agent must learn where the binary is: {instructions}"
+    );
     let mut tools: Vec<&str> = first[1]["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
     tools.sort();
     assert_eq!(tools, ["assign_secret", "create_secret", "link_folder", "list_secrets", "request_secret_value", "unassign_secret", "unlink_folder"]);

@@ -155,11 +155,17 @@ fn handle(config: &Config, l: &Keyfold, method: &str, params: &Map<String, Value
         "initialize" => {
             let requested = params.get("protocolVersion").and_then(Value::as_str).unwrap_or("");
             let version = if SUPPORTED_VERSIONS.contains(&requested) { requested } else { SUPPORTED_VERSIONS[1] };
+            // The agent's shell often has no `keyfold` on PATH (an alias is not expanded in a
+            // non-interactive shell), so tell it where this binary is.
+            let path_note = match std::env::current_exe() {
+                Ok(exe) => format!(" If `keyfold` is not on PATH, call it by its full path: {}", exe.display()),
+                Err(_) => String::new(),
+            };
             Ok(json!({
                 "protocolVersion": version,
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": "keyfold", "version": env!("CARGO_PKG_VERSION") },
-                "instructions": format!("Local API key vault. Keys are referenced by name; values stay in the OS credential store and are never returned. {USAGE_NOTE}")
+                "instructions": format!("Local API key vault. Keys are referenced by name; values stay in the OS credential store and are never returned. {USAGE_NOTE}{path_note}")
             }))
         }
         "ping" => Ok(json!({})),
