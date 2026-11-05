@@ -1,7 +1,8 @@
 use crate::{connect, prompt};
 use keyfold_core::l10n::t;
 use keyfold_core::redactor::Redactor;
-use keyfold_core::{project_for_dir, Config, Keyfold, KeyfoldError, SlotInfo};
+use keyfold_core::{Config, Keyfold, KeyfoldError, SlotInfo};
+use std::path::PathBuf;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
@@ -48,6 +49,9 @@ pub fn run(config: &Config, argv: &[String]) -> i32 {
         "receive" => receive(config, &keyfold, &args),
         "assign" => assign(&keyfold, &args),
         "unassign" => unassign(&keyfold, &args),
+        "link" => link(&keyfold, &args),
+        "unlink" => unlink(&keyfold, &args),
+        "folders" => folders(&keyfold),
         "list" => list(&keyfold, &args),
         "run" => run_command(&keyfold, &args),
         "delete" => delete(&keyfold, &args),
@@ -75,7 +79,10 @@ fn usage() -> i32 {
   keyfold unassign NOMBRE --project P                 quita la clave del proyecto (la clave y su valor se quedan)
   keyfold list [--project P]                          lista nombres y estado, nunca valores
   keyfold run [--project P] -- comando [args...]      ejecuta con las claves del proyecto (salida censurada);
-                                                      sin --project usa el .keyfold más cercano (una línea con el proyecto)
+                                                      sin --project usa el .keyfold o la carpeta vinculada más cercana
+  keyfold link [CARPETA] --project P                  vincula la carpeta (por defecto la actual) a un proyecto, solo en este equipo
+  keyfold unlink [CARPETA]                            quita el vínculo de la carpeta
+  keyfold folders                                     lista las carpetas vinculadas
   keyfold delete NOMBRE                               borra la clave y su valor
   keyfold mcp                                         servidor MCP por stdio para agentes
   keyfold connect claude|codex|cursor                 registra este binario como servidor MCP del agente",
@@ -88,7 +95,10 @@ fn usage() -> i32 {
   keyfold unassign NAME --project P                   remove the key from the project (the key and its value stay)
   keyfold list [--project P]                          list names and status, never values
   keyfold run [--project P] -- command [args...]      run with the project's keys (output redacted);
-                                                      without --project, uses the nearest .keyfold (one line: the project)
+                                                      without --project, uses the nearest .keyfold or linked folder
+  keyfold link [FOLDER] --project P                   link the folder (default: current) to a project, on this machine only
+  keyfold unlink [FOLDER]                             remove the folder's link
+  keyfold folders                                     list linked folders
   keyfold delete NAME                                 delete the key and its value
   keyfold mcp                                         MCP server over stdio for agents
   keyfold connect claude|codex|cursor                 register this binary as the agent's MCP server",
@@ -190,6 +200,43 @@ fn unassign(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
     Ok(0)
 }
 
+/// The folder argument, or the current folder.
+fn folder_arg(args: &Arguments) -> Result<PathBuf, KeyfoldError> {
+    Ok(match first(args) {
+        Some(path) => PathBuf::from(path),
+        None => std::env::current_dir()?,
+    })
+}
+
+fn link(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
+    let Some(project) = args.project.as_deref() else { return Ok(usage()) };
+    let path = l.link_folder(&folder_arg(args)?, project)?;
+    println!("{}", t(&format!("{path} vinculada a {project}"), &format!("{path} linked to {project}")));
+    Ok(0)
+}
+
+fn unlink(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
+    let folder = folder_arg(args)?;
+    if l.unlink_folder(&folder)? {
+        println!("{}", t("Vínculo quitado.", "Link removed."));
+        Ok(0)
+    } else {
+        eprintln!("{}", t(&format!("{} no está vinculada.", folder.display()), &format!("{} is not linked.", folder.display())));
+        Ok(1)
+    }
+}
+
+fn folders(l: &Keyfold) -> Result<i32, KeyfoldError> {
+    let folders = l.folders()?;
+    if folders.is_empty() {
+        println!("{}", t("Sin carpetas vinculadas.", "No linked folders."));
+    }
+    for (path, project) in &folders {
+        println!("{path}  {project}");
+    }
+    Ok(0)
+}
+
 fn list(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
     let slots = l.list(args.project.as_deref())?;
     if slots.is_empty() {
@@ -214,10 +261,10 @@ fn delete(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
 /// Runs the command with only the project's keys in its environment and redacts
 /// their values from its stdout/stderr before passing them on.
 fn run_command(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
-    // --project wins; otherwise the nearest .keyfold from the current folder up.
+    // --project wins; otherwise the nearest .keyfold or linked folder from here up.
     let project = match &args.project {
         Some(p) => p.clone(),
-        None => match project_for_dir(&std::env::current_dir()?)? {
+        None => match l.project_for(&std::env::current_dir()?)? {
             Some(p) => p,
             None => return Ok(usage()),
         },

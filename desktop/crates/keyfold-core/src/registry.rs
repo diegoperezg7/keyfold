@@ -16,6 +16,10 @@ pub struct Registry {
     pub projects: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     pub secrets: BTreeMap<String, SecretSlot>,
+    /// Absolute folder path -> project, for `keyfold run` without `--project`. Written only when
+    /// there is at least one link, so registries without links keep the exact Swift-era shape.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub folders: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -138,6 +142,16 @@ mod tests {
         let registry: Registry = serde_json::from_str(swift).unwrap();
         assert_eq!(registry.projects["demo"], vec!["EXA_API_KEY"]);
         assert_eq!(registry.secrets["EXA_API_KEY"].created_at, "2026-11-05T12:08:48Z");
+    }
+
+    #[test]
+    fn folders_are_optional_and_only_written_when_present() {
+        let mut registry: Registry = serde_json::from_str(r#"{ "projects": {}, "secrets": {} }"#).unwrap();
+        assert!(registry.folders.is_empty());
+        assert!(!serde_json::to_string(&registry).unwrap().contains("folders"));
+        registry.folders.insert("/repo".into(), "web".into());
+        let back: Registry = serde_json::from_str(&serde_json::to_string(&registry).unwrap()).unwrap();
+        assert_eq!(back.folders["/repo"], "web");
     }
 
     #[test]

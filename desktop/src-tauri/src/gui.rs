@@ -132,6 +132,17 @@ fn unassign_key(state: State<AppState>, name: String, project: String) -> Result
     state.keyfold().unassign(&name, &project).map_err(|e| e.to_string())
 }
 
+/// Folder path -> project, for the keys window.
+#[tauri::command]
+fn list_folders(state: State<AppState>) -> Result<std::collections::BTreeMap<String, String>, String> {
+    state.keyfold().folders().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn unlink_folder(state: State<AppState>, path: String) -> Result<bool, String> {
+    state.keyfold().unlink_folder(std::path::Path::new(&path)).map_err(|e| e.to_string())
+}
+
 /// Stores the value. The value is not logged and the reply carries no value.
 #[tauri::command]
 fn save_secret(state: State<AppState>, name: String, value: String) -> Result<(), String> {
@@ -230,7 +241,7 @@ pub fn run(config: Config, mode: Mode) -> i32 {
     };
     let app = tauri::Builder::default()
         .manage(AppState { config, prompt: prompt.clone(), unlock: SessionUnlock::default() })
-        .invoke_handler(tauri::generate_handler![list_keys, create_key, assign_key, unassign_key, save_secret, reveal_value, hide_value, finish_prompt, open_prompt])
+        .invoke_handler(tauri::generate_handler![list_keys, create_key, assign_key, unassign_key, list_folders, unlink_folder, save_secret, reveal_value, hide_value, finish_prompt, open_prompt])
         .setup(move |app| {
             let handle = &app.handle().clone();
             match &prompt {

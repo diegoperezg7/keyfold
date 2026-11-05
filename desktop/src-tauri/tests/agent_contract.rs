@@ -202,6 +202,28 @@ fn run_uses_the_folder_project_file_and_warns_on_unknown_projects() {
     let outside = s.home.join("outside");
     std::fs::create_dir_all(&outside).unwrap();
     assert_eq!(s.cli_in(&outside, &["run", "--", "/bin/sh", "-c", "exit 0"], None).status, 64);
+
+    // A linked folder (this machine only) works the same way, and unlink undoes it.
+    assert_eq!(s.cli_in(&outside, &["link", "--project", "alpha"], None).status, 0);
+    assert!(s.registry().contains("\"folders\""));
+    let result = s.cli_in(&outside, &has_key, None);
+    assert_eq!(result.status, 0, "the linked folder did not get its key: {}", result.err);
+    assert!(s.cli_in(&outside, &["folders"], None).out.contains("alpha"));
+    assert_eq!(s.cli_in(&outside, &["unlink"], None).status, 0);
+    assert_eq!(s.cli_in(&outside, &["run", "--", "/bin/sh", "-c", "exit 0"], None).status, 64);
+    assert!(!s.registry().contains("\"folders\""), "an empty folders map must not be written");
+
+    // The agent links through MCP with an absolute path.
+    let path = outside.to_string_lossy().into_owned();
+    let call = |id: i64, name: &str, args: Value| json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":name,"arguments":args}});
+    let replies = s.mcp(&[
+        call(1, "link_folder", json!({"path": path, "project": "alpha"})),
+        call(2, "unlink_folder", json!({"path": path})),
+        call(3, "link_folder", json!({"path": "/no/such/folder", "project": "alpha"})),
+    ]);
+    assert_eq!(replies[0]["result"]["structuredContent"]["project"], "alpha");
+    assert_eq!(replies[1]["result"]["structuredContent"]["removed"], json!(true));
+    assert_eq!(replies[2]["result"]["isError"], json!(true));
 }
 
 #[test]
@@ -218,7 +240,7 @@ fn mcp_tools_never_return_the_value() {
     assert_eq!(first[0]["result"]["protocolVersion"], "2025-06-18");
     let mut tools: Vec<&str> = first[1]["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
     tools.sort();
-    assert_eq!(tools, ["assign_secret", "create_secret", "list_secrets", "request_secret_value", "unassign_secret"]);
+    assert_eq!(tools, ["assign_secret", "create_secret", "link_folder", "list_secrets", "request_secret_value", "unassign_secret", "unlink_folder"]);
     assert_eq!(first[2]["result"]["structuredContent"]["reference"], "keyfold://EXA_API_KEY");
 
     assert_eq!(s.cli(&["set", "EXA_API_KEY", "--stdin"], Some(&value)).status, 0);

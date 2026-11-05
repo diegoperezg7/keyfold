@@ -171,6 +171,7 @@ None of them returns a value. They return the name, the reference, whether a val
 | `request_secret_value` | Open the paste window to add or replace the value of an existing key |
 | `assign_secret` | Make an existing key available to a project |
 | `unassign_secret` | Take a key out of a project, e.g. a misspelled one |
+| `link_folder` / `unlink_folder` | Link a local folder to a project on this machine, or remove the link |
 
 ## Commands
 
@@ -183,7 +184,9 @@ None of them returns a value. They return the name, the reference, whether a val
 | `keyfold assign NAME --project P` | Make a key available to a project |
 | `keyfold unassign NAME --project P` | Take a key out of a project (the key and its value stay) |
 | `keyfold list [--project P]` | Names, status and projects. Never values |
-| `keyfold run [--project P] -- <command>` | Run with the project's keys in the environment, output masked. Without `--project`, uses the nearest `.keyfold` |
+| `keyfold run [--project P] -- <command>` | Run with the project's keys in the environment, output masked. Without `--project`, uses the nearest `.keyfold` or linked folder |
+| `keyfold link [FOLDER] --project P` | Link a folder (default: the current one) to a project, on this machine only |
+| `keyfold unlink [FOLDER]` / `keyfold folders` | Remove a folder link / list linked folders |
 | `keyfold delete NAME` | Delete a key and its value |
 | `keyfold mcp` | MCP server over stdio |
 | `keyfold connect claude\|codex\|cursor` | Register Keyfold as the agent's MCP server |
@@ -192,6 +195,11 @@ To tie a folder to its project, put a `.keyfold` file at the repo root with the 
 (lines starting with `#` are comments). `keyfold run -- npm run dev` then works anywhere inside it.
 The file holds a name only, never a value, so it can be committed and the whole team shares it.
 If the project does not exist in your Keyfold, `run` warns and starts the command without keys.
+
+To link a folder without adding a file to the repo, run `keyfold link --project P` inside it (or let
+your agent call `link_folder`). The link lives in your `registry.json` and only works on your machine.
+Going up from the current folder, the nearest `.keyfold` or link wins; at the same level, the file wins.
+In the app, choosing a project in the filter shows its linked folders, and you can unlink them there.
 
 ## Security
 
@@ -208,7 +216,7 @@ What Keyfold guarantees, and what it doesn't. The full review is in [SECURITY.md
 Where things are stored:
 
 - **Values:** the OS credential store (macOS login Keychain, Windows Credential Manager), encrypted at rest and tied to your user account.
-- **Names and projects:** `registry.json` in your user data folder, readable only by you. It never contains values.
+- **Names, projects and linked folders:** `registry.json` in your user data folder, readable only by you. It never contains values.
 
 ## Project layout
 

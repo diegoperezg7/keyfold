@@ -2,6 +2,7 @@ use crate::l10n::t;
 use crate::registry::{now_iso8601, Registry, RegistryStore, SecretSlot};
 use crate::store::{system_store, SecretStore, StoreError, DEFAULT_SERVICE};
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -205,6 +206,49 @@ impl Keyfold {
         Ok(self.store.get(name)?)
     }
 
+    /// Links a folder to a project: `keyfold run` there (or below) uses it without `--project`.
+    /// Stored as the canonical absolute path, so symlinks and `..` resolve to one entry.
+    pub fn link_folder(&self, folder: &Path, project: &str) -> Result<String, KeyfoldError> {
+        validate_project(project)?;
+        let path = canonical(folder)?;
+        let mut registry = self.registry.load()?;
+        registry.folders.insert(path.clone(), project.to_string());
+        self.registry.save(&registry)?;
+        Ok(path)
+    }
+
+    /// Removes a folder link. Returns whether there was one. Works for folders that no longer exist.
+    pub fn unlink_folder(&self, folder: &Path) -> Result<bool, KeyfoldError> {
+        let path = canonical(folder).unwrap_or_else(|_| folder.to_string_lossy().into_owned());
+        let mut registry = self.registry.load()?;
+        let removed = registry.folders.remove(&path).is_some();
+        if removed {
+            self.registry.save(&registry)?;
+        }
+        Ok(removed)
+    }
+
+    /// Folder path -> project, sorted by path.
+    pub fn folders(&self) -> Result<BTreeMap<String, String>, KeyfoldError> {
+        Ok(self.registry.load()?.folders)
+    }
+
+    /// The project for a folder: from it up to the root, the nearest `.keyfold` file or linked
+    /// folder wins; at the same level the file (shared with the team) wins over the local link.
+    pub fn project_for(&self, dir: &Path) -> Result<Option<String>, KeyfoldError> {
+        let folders = self.registry.load()?.folders;
+        let start = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+        for level in start.ancestors() {
+            if let Some(project) = project_file_in(level)? {
+                return Ok(Some(project));
+            }
+            if let Some(project) = folders.get(&*level.to_string_lossy()) {
+                return Ok(Some(project.clone()));
+            }
+        }
+        Ok(None)
+    }
+
     /// Every project some key is assigned to, sorted.
     pub fn projects(&self) -> Result<Vec<String>, KeyfoldError> {
         Ok(self.registry.load()?.projects.into_keys().collect())
@@ -242,18 +286,29 @@ pub const PROJECT_FILE: &str = ".keyfold";
 /// A file with no name is skipped; a file with an invalid name is an error, not a silent miss.
 pub fn project_for_dir(start: &Path) -> Result<Option<String>, KeyfoldError> {
     for dir in start.ancestors() {
-        let path = dir.join(PROJECT_FILE);
-        if !path.is_file() {
-            continue;
+        if let Some(project) = project_file_in(dir)? {
+            return Ok(Some(project));
         }
-        let text = std::fs::read_to_string(&path)?;
-        let Some(name) = text.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with('#')) else {
-            continue;
-        };
-        validate_project(name)?;
-        return Ok(Some(name.to_string()));
     }
     Ok(None)
+}
+
+/// The project named by `dir/.keyfold`, if that file exists and names one.
+fn project_file_in(dir: &Path) -> Result<Option<String>, KeyfoldError> {
+    let path = dir.join(PROJECT_FILE);
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let text = std::fs::read_to_string(&path)?;
+    let Some(name) = text.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with('#')) else {
+        return Ok(None);
+    };
+    validate_project(name)?;
+    Ok(Some(name.to_string()))
+}
+
+fn canonical(folder: &Path) -> Result<String, KeyfoldError> {
+    Ok(std::fs::canonicalize(folder)?.to_string_lossy().into_owned())
 }
 
 /// `^[A-Z_][A-Z0-9_]*$`
@@ -348,6 +403,33 @@ mod tests {
         assert_eq!(l.reveal("A_KEY").unwrap().as_deref(), Some("secret-a"));
         assert!(l.unassign("A_KEY", "nowhere").unwrap().projects.is_empty());
         assert_eq!(l.unassign("MISSING", "web"), Err(KeyfoldError::UnknownSecret("MISSING".into())));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn linked_folders_resolve_from_subfolders_and_the_file_wins_at_the_same_level() {
+        let (l, dir) = keyfold();
+        let repo = dir.join("repo");
+        let sub = repo.join("src");
+        std::fs::create_dir_all(&sub).unwrap();
+        assert_eq!(l.project_for(&sub).unwrap(), None);
+
+        let stored = l.link_folder(&sub.join(".."), "web").unwrap();
+        assert_eq!(stored, std::fs::canonicalize(&repo).unwrap().to_string_lossy());
+        assert_eq!(l.folders().unwrap().get(&stored).map(String::as_str), Some("web"));
+        assert_eq!(l.project_for(&sub).unwrap().as_deref(), Some("web"));
+
+        // A nearer link wins; at the same level the shared .keyfold file wins.
+        l.link_folder(&sub, "api").unwrap();
+        assert_eq!(l.project_for(&sub).unwrap().as_deref(), Some("api"));
+        std::fs::write(sub.join(PROJECT_FILE), "shared\n").unwrap();
+        assert_eq!(l.project_for(&sub).unwrap().as_deref(), Some("shared"));
+
+        assert!(l.unlink_folder(&repo).unwrap());
+        assert!(!l.unlink_folder(&repo).unwrap());
+        assert_eq!(l.project_for(&repo).unwrap(), None);
+        assert_eq!(l.link_folder(&repo, "bad/name"), Err(KeyfoldError::InvalidProject("bad/name".into())));
+        assert!(matches!(l.link_folder(&dir.join("missing"), "web"), Err(KeyfoldError::Io(_))));
         let _ = std::fs::remove_dir_all(dir);
     }
 

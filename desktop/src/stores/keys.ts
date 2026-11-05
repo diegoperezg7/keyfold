@@ -4,6 +4,8 @@ import type { ProjectFilter, Sort, SortKey, StatusFilter } from '../logic'
 
 interface KeysState {
   keys: SlotInfo[]
+  /** Folder path -> project (`keyfold link`). */
+  folders: Record<string, string>
   loaded: boolean
   loadFailed: boolean
   search: string
@@ -16,6 +18,8 @@ interface KeysState {
   assign: (name: string, project: string) => Promise<string | null>
   /** Takes the key out of the project. Returns null on success, or the error message from Rust. */
   unassign: (name: string, project: string) => Promise<string | null>
+  /** Removes a folder link. Returns null on success, or the error message from Rust. */
+  unlink: (path: string) => Promise<string | null>
   setSearch: (search: string) => void
   setFilter: (filter: StatusFilter) => void
   toggleSort: (key: SortKey) => void
@@ -25,6 +29,7 @@ interface KeysState {
 
 export const useKeys = create<KeysState>((set, get) => ({
   keys: [],
+  folders: {},
   loaded: false,
   loadFailed: false,
   search: '',
@@ -35,7 +40,8 @@ export const useKeys = create<KeysState>((set, get) => ({
 
   load: async () => {
     try {
-      set({ keys: await api.listKeys(), loaded: true, loadFailed: false })
+      const [keys, folders] = await Promise.all([api.listKeys(), api.listFolders()])
+      set({ keys, folders, loaded: true, loadFailed: false })
     } catch {
       set({ loaded: true, loadFailed: true })
     }
@@ -64,6 +70,16 @@ export const useKeys = create<KeysState>((set, get) => ({
   unassign: async (name, project) => {
     try {
       await api.unassignKey(name, project)
+      await get().load()
+      return null
+    } catch (error) {
+      return String(error)
+    }
+  },
+
+  unlink: async (path) => {
+    try {
+      await api.unlinkFolder(path)
       await get().load()
       return null
     } catch (error) {

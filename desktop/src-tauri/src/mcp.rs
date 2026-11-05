@@ -11,7 +11,8 @@ const SUPPORTED_VERSIONS: [&str; 4] = ["2025-11-25", "2025-06-18", "2025-03-26",
 const USAGE_NOTE: &str = "Never ask the user to paste a key into the chat or into a file. \
 To run the project with its keys, use the shell: `keyfold run --project <project> -- <command>`. \
 Do not write values into .env files; the keys are injected at run time. \
-To tie a folder to its project, write a `.keyfold` file at the repo root whose only line is the project name; \
+To tie a folder to its project, write a `.keyfold` file at the repo root whose only line is the project name \
+(shared with the team), or call link_folder (this machine only); \
 then `keyfold run -- <command>` works there without `--project`.";
 
 fn tools() -> Value {
@@ -48,6 +49,20 @@ fn tools() -> Value {
                 "properties": { "name": { "type": "string" }, "project": { "type": "string" } },
                 "required": ["name", "project"]
             }
+        },
+        {
+            "name": "link_folder",
+            "description": "Link a local folder (absolute path, usually the repo root) to a project on this machine, so `keyfold run -- <command>` inside it needs no `--project`. Prefer a committed `.keyfold` file when the whole team should share it.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "path": { "type": "string" }, "project": { "type": "string" } },
+                "required": ["path", "project"]
+            }
+        },
+        {
+            "name": "unlink_folder",
+            "description": "Remove the link between a local folder (absolute path) and its project.",
+            "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] }
         },
         {
             "name": "unassign_secret",
@@ -110,6 +125,14 @@ fn call_tool(config: &Config, l: &Keyfold, name: &str, args: &Map<String, Value>
         "assign_secret" => {
             let secret = string_arg(args, "name")?;
             Ok(slot_json(&l.assign(secret, string_arg(args, "project")?)?))
+        }
+        "link_folder" => {
+            let path = l.link_folder(std::path::Path::new(string_arg(args, "path")?), string_arg(args, "project")?)?;
+            Ok(json!({ "path": path, "project": string_arg(args, "project")? }))
+        }
+        "unlink_folder" => {
+            let removed = l.unlink_folder(std::path::Path::new(string_arg(args, "path")?))?;
+            Ok(json!({ "removed": removed }))
         }
         "unassign_secret" => {
             let secret = string_arg(args, "name")?;

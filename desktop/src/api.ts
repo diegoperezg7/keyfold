@@ -36,6 +36,9 @@ export const api = {
   listKeys: () => invoke<SlotInfo[]>('list_keys'),
   createKey: (name: string, project: string | null) => invoke<SlotInfo>('create_key', { name, project }),
   assignKey: (name: string, project: string) => invoke<SlotInfo>('assign_key', { name, project }),
+  /** Folder path -> project, linked on this machine. */
+  listFolders: () => invoke<Record<string, string>>('list_folders'),
+  unlinkFolder: (path: string) => invoke<boolean>('unlink_folder', { path }),
   unassignKey: (name: string, project: string) => invoke<SlotInfo>('unassign_key', { name, project }),
   /** One-way: the value goes to the credential store and nothing comes back. */
   saveSecret: (name: string, value: string) => invoke<void>('save_secret', { name, value }),

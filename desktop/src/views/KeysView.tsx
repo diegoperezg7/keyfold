@@ -5,6 +5,7 @@ import { api, boot, type Notice, type SlotInfo } from '../api'
 import { AssignDialog } from '../components/AssignDialog'
 import { Logo } from '../components/Logo'
 import { NewKeyDialog } from '../components/NewKeyDialog'
+import { ProjectFolders } from '../components/ProjectFolders'
 import { ProjectSelect } from '../components/ProjectSelect'
 import { RevealDialog } from '../components/RevealDialog'
 import { Segmented } from '../components/Segmented'
@@ -132,6 +133,7 @@ export function KeysView() {
         />
         <ProjectSelect projects={projects} value={activeProject} onChange={setProject} />
       </div>
+      {activeProject !== null && activeProject !== NO_PROJECT && <ProjectFolders project={activeProject} />}
       </header>
 
       <main className="list">

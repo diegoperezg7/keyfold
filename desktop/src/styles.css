@@ -693,6 +693,30 @@ input {
   padding-right: 3px;
 }
 
+.folders {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin-top: -8px;
+  padding: 0 var(--gutter) 16px;
+}
+
+.chip-path {
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
+  color: var(--text-muted);
+}
+
+.chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
 .chip-remove {
   display: inline-flex;
   align-items: center;
