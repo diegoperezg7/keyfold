@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { SlotInfo } from './api'
 import {
   counts,
+  isPublicKey,
+  parseRecipients,
   downloadPercent,
   isValidKeyName,
   isValidProject,
@@ -108,5 +110,21 @@ describe('update download', () => {
   it('has no percent when the server does not send the size', () => {
     expect(downloadPercent(500, null)).toBeNull()
     expect(downloadPercent(500, 0)).toBeNull()
+  })
+})
+
+describe('share recipients', () => {
+  const KEY = 'age1qyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqs3290gq'
+
+  it('reads one public key per line, ignoring blanks, commas and repeats', () => {
+    expect(parseRecipients(`${KEY}\n\n  ${KEY}, age1other `)).toEqual([KEY, 'age1other'])
+    expect(parseRecipients('   ')).toEqual([])
+  })
+
+  it('accepts only age public keys', () => {
+    expect(isPublicKey(KEY)).toBe(true)
+    expect(isPublicKey('age1short')).toBe(false)
+    expect(isPublicKey('AGE-SECRET-KEY-1QQQ')).toBe(false)
+    expect(isPublicKey(KEY.toUpperCase())).toBe(false)
   })
 })

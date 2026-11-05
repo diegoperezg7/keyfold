@@ -71,12 +71,23 @@ A typical session:
 
 Keyfold has no cloud and no accounts, on purpose. Each person keeps their own keys on their own machine:
 
-1. Someone gets the key (from the provider, or a teammate sends it over a channel you trust).
+1. Someone gets the key (from the provider, or a teammate shares it encrypted, see below).
 2. They tell their agent "I have it". The paste window opens on their machine.
 3. The project only refers to the key by name, so the same code works for everyone. Each teammate's
    Keyfold injects their own copy.
 
 No key in the repo, no key in the chat, no `.env` to pass around.
+
+### Sharing keys, and your keys on another Mac
+
+Each Keyfold has a public key (`keyfold id`, or **Share › Receive** in the app). To share keys,
+encrypt them to the recipient's public key: `keyfold share NAME --to age1…`, or **Share › Send**.
+You get an [age](https://age-encryption.org) package you can send over any channel: only that
+recipient can open it, with `keyfold import` or **Share › Receive**. Sharing always asks for Touch ID,
+so an agent cannot send your keys to itself.
+
+To have your keys on another Mac, do the same with that Mac's public key and `--all`, and move the
+package with AirDrop. Each Mac keeps its own private key in its Keychain; it never leaves the Mac.
 
 ### In the app
 
@@ -216,6 +227,9 @@ None of them returns a value. They return the name, the reference, whether a val
 | `keyfold link [FOLDER] --project P` | Link a folder (default: the current one) to a project, on this machine only |
 | `keyfold unlink [FOLDER]` / `keyfold folders` | Remove a folder link / list linked folders |
 | `keyfold delete NAME` | Delete a key and its value |
+| `keyfold id` | This computer's public key (`age1…`), for others to share keys with you |
+| `keyfold share NAME... \| --all --to age1… [--out FILE]` | Encrypt keys for those recipients only (asks for Touch ID) |
+| `keyfold import [FILE]` | Import a package encrypted for this computer (or from stdin) |
 | `keyfold mcp` | MCP server over stdio |
 | `keyfold connect claude\|codex\|cursor` | Register Keyfold as the agent's MCP server |
 

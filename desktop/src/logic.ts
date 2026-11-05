@@ -97,3 +97,13 @@ export function downloadPercent(downloaded: number, total: number | null): numbe
   if (!total || total <= 0) return null
   return Math.min(100, Math.floor((downloaded / total) * 100))
 }
+
+/** Public keys pasted one per line (spaces and commas also separate them), without repeats. */
+export function parseRecipients(text: string): string[] {
+  return [...new Set(text.split(/[\s,]+/).filter(Boolean))]
+}
+
+/** An age X25519 public key: `age1` and 58 lowercase bech32 characters. */
+export function isPublicKey(key: string): boolean {
+  return /^age1[02-9ac-hj-np-z]{58}$/.test(key)
+}

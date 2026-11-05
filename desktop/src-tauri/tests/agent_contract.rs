@@ -88,6 +88,11 @@ impl Drop for Sandbox {
                 .env("KEYFOLD_SERVICE", &self.service)
                 .output();
         }
+        // The identity `keyfold id` created in this throwaway service.
+        #[cfg(target_os = "macos")]
+        let _ = Command::new("/usr/bin/security")
+            .args(["delete-generic-password", "-s", &self.service, "-a", "keyfold.identity"])
+            .output();
         let _ = std::fs::remove_dir_all(&self.home);
     }
 }
@@ -278,4 +283,49 @@ fn mcp_tools_never_return_the_value() {
     assert!(!s.registry().contains("\"other\""), "an empty project must disappear");
 
     s.assert_never_printed(&value);
+}
+
+/// A package encrypted to this computer's `keyfold id` imports into the credential store and
+/// reaches `run`; another install cannot open it; no output or file shows the value.
+/// The package is made with the core (sharing itself asks for Touch ID, so not from a test).
+#[cfg(unix)]
+#[test]
+fn import_opens_only_packages_for_this_computer() {
+    use keyfold_core::registry::RegistryStore;
+    use keyfold_core::store::MemoryStore;
+    use keyfold_core::Keyfold;
+
+    let mut s = Sandbox::new("import");
+    let mut other = Sandbox::new("import-other");
+    let value = secret("exa");
+    let id = s.cli(&["id"], None);
+    assert_eq!(id.status, 0, "{}", id.err);
+    let public_key = id.out.trim().to_string();
+    assert!(public_key.starts_with("age1"), "{public_key}");
+    assert_eq!(s.cli(&["id"], None).out.trim(), public_key, "the identity must persist");
+
+    let sender_home = s.home.join("sender");
+    let sender = Keyfold::new(Box::new(MemoryStore::default()), RegistryStore::new(&sender_home));
+    sender.create_slot("EXA_API_KEY", Some("demo")).unwrap();
+    sender.set_value("EXA_API_KEY", &value).unwrap();
+    let package = sender.share(&["EXA_API_KEY".into()], &[public_key]).unwrap();
+    let file = s.home.join("exa.age");
+    std::fs::write(&file, &package).unwrap();
+    assert!(!package.contains(&value));
+
+    let denied = other.cli(&["import", file.to_str().unwrap()], None);
+    assert_eq!(denied.status, 1);
+    assert!(!denied.err.trim().is_empty(), "the refusal must say why");
+    assert!(!other.registry().contains("EXA_API_KEY"), "a package for someone else must not create keys");
+
+    let imported = s.cli(&["import", file.to_str().unwrap()], None);
+    assert_eq!(imported.status, 0, "{}", imported.err);
+    assert!(imported.out.contains("keyfold://EXA_API_KEY") && imported.out.contains("demo"), "{}", imported.out);
+    let args = check_env_equals_stdin("EXA_API_KEY");
+    let mut run = vec!["run", "--project", "demo", "--"];
+    run.extend(args.iter().map(String::as_str));
+    assert_eq!(s.cli(&run, Some(&format!("{value}\n"))).status, 0, "imported value did not reach run");
+
+    s.assert_never_printed(&value);
+    other.assert_never_printed(&value);
 }

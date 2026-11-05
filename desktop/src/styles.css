@@ -49,7 +49,7 @@
   --titlebar-inset: 0px;
   --gutter: 20px;
   /* Two 28 px icon buttons + the 112 px main button + 4 px gaps: the same in every row. */
-  --actions-width: 176px;
+  --actions-width: 208px;
   color-scheme: light;
 }
 
@@ -986,6 +986,35 @@ input {
 
 .input.mono {
   font-family: var(--mono);
+}
+
+/* Multi-line field: public keys to share with, or a pasted package. */
+.input-area {
+  height: auto;
+  padding: 10px 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+/* Tabs inside a dialog (Send / Receive): the track spans the dialog, so the options share it. */
+.dialog > .segmented button {
+  flex: 1;
+  justify-content: center;
+}
+
+/* This computer's public key: shown whole, selectable, never secret. */
+.public-key {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  user-select: text;
 }
 
 .revealed {

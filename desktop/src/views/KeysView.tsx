@@ -1,10 +1,11 @@
 import { listen } from '@tauri-apps/api/event'
-import { AlertCircle, ArrowDown, ArrowUp, CheckCircle2, Eye, FolderPlus, KeyRound, Plus, RefreshCw, RotateCw, Search, ShieldCheck, X } from 'lucide-react'
+import { AlertCircle, ArrowDown, ArrowUp, CheckCircle2, Eye, FolderPlus, KeyRound, Plus, RefreshCw, RotateCw, Search, Share2, ShieldCheck, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { api, boot, type Notice, type SlotInfo } from '../api'
 import { AssignDialog } from '../components/AssignDialog'
 import { Logo } from '../components/Logo'
 import { NewKeyDialog } from '../components/NewKeyDialog'
+import { ShareDialog } from '../components/ShareDialog'
 import { ProjectFolders } from '../components/ProjectFolders'
 import { ProjectSelect } from '../components/ProjectSelect'
 import { RevealDialog } from '../components/RevealDialog'
@@ -28,6 +29,8 @@ export function KeysView() {
   const { keys, loaded, loadFailed, search, filter, sort, project, load, setSearch, setFilter, setProject, toggleSort } = useKeys()
   const [assigning, setAssigning] = useState<SlotInfo | null>(null)
   const [revealing, setRevealing] = useState<string | null>(null)
+  /** Keys to share: one from its row, or [] for every key with a value. */
+  const [sharing, setSharing] = useState<string[] | null>(null)
   const [creating, setCreating] = useState(boot.action === 'new')
   const [notice, setNotice] = useState<Notice | null>(boot.notice ?? null)
 
@@ -94,6 +97,9 @@ export function KeysView() {
         <div className="topbar-actions">
           <button className="btn btn-icon btn-ghost" onClick={() => load()} title={t('refresh')} aria-label={t('refresh')}>
             <RefreshCw size={16} aria-hidden />
+          </button>
+          <button className="btn btn-icon btn-ghost" onClick={() => setSharing([])} title={t('shareTitle')} aria-label={t('shareTitle')}>
+            <Share2 size={16} aria-hidden />
           </button>
           <button className="btn btn-primary" onClick={() => setCreating(true)}>
             <Plus size={16} aria-hidden />
@@ -175,9 +181,14 @@ export function KeysView() {
                 {/* Secondary actions as quiet icons; the main one (add or reveal) at the edge. */}
                 <span className="actions cell-actions" role="cell">
                   {slot.hasValue && (
-                    <IconButton label={t('changeValue')} onClick={() => api.openPrompt(slot.name)}>
-                      <RotateCw size={15} aria-hidden />
-                    </IconButton>
+                    <>
+                      <IconButton label={t('share')} onClick={() => setSharing([slot.name])}>
+                        <Share2 size={15} aria-hidden />
+                      </IconButton>
+                      <IconButton label={t('changeValue')} onClick={() => api.openPrompt(slot.name)}>
+                        <RotateCw size={15} aria-hidden />
+                      </IconButton>
+                    </>
                   )}
                   {/* Always next to the main button, so it sits in the same place in every row. */}
                   <IconButton label={t('assignProject')} onClick={() => setAssigning(slot)}>
@@ -211,6 +222,7 @@ export function KeysView() {
 
       {assigning && <AssignDialog slot={assigning} onClose={() => setAssigning(null)} />}
       {creating && <NewKeyDialog onClose={() => setCreating(false)} />}
+      {sharing && <ShareDialog names={sharing} onClose={() => setSharing(null)} />}
       {revealing && <RevealDialog name={revealing} onClose={closeReveal} />}
       <UpdateNotice />
       <UpdatedDialog />

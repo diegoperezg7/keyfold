@@ -1,4 +1,4 @@
-use crate::{connect, prompt};
+use crate::{connect, prompt, unlock};
 use keyfold_core::l10n::t;
 use keyfold_core::redactor::Redactor;
 use keyfold_core::{Config, Keyfold, KeyfoldError, SlotInfo};
@@ -9,13 +9,17 @@ use std::process::{Command, Stdio};
 struct Arguments {
     positionals: Vec<String>,
     project: Option<String>,
+    /// `--to age1…`, repeatable (share).
+    to: Vec<String>,
+    /// `--out FILE` (share).
+    out: Option<String>,
     flags: Vec<String>,
     command: Vec<String>,
 }
 
 impl Arguments {
     fn parse(raw: &[String]) -> Result<Self, KeyfoldError> {
-        let mut args = Self { positionals: vec![], project: None, flags: vec![], command: vec![] };
+        let mut args = Self { positionals: vec![], project: None, to: vec![], out: None, flags: vec![], command: vec![] };
         let mut it = raw.iter();
         while let Some(arg) = it.next() {
             match arg.as_str() {
@@ -24,6 +28,8 @@ impl Arguments {
                     break;
                 }
                 "--project" => args.project = Some(it.next().cloned().ok_or(KeyfoldError::InvalidProject(String::new()))?),
+                "--to" => args.to.push(it.next().cloned().ok_or(KeyfoldError::InvalidRecipient(String::new()))?),
+                "--out" => args.out = Some(it.next().cloned().ok_or(KeyfoldError::Io("--out needs a file".into()))?),
                 flag if flag.starts_with("--") => args.flags.push(flag.into()),
                 other => args.positionals.push(other.into()),
             }
@@ -55,6 +61,9 @@ pub fn run(config: &Config, argv: &[String]) -> i32 {
         "list" => list(&keyfold, &args),
         "run" => run_command(&keyfold, &args),
         "delete" => delete(&keyfold, &args),
+        "id" => id(&keyfold),
+        "share" => share(&keyfold, &args),
+        "import" => import(&keyfold, &args),
         "connect" => return connect_agent(&args),
         _ => Ok(usage()),
     };
@@ -84,6 +93,10 @@ fn usage() -> i32 {
   keyfold unlink [CARPETA]                            quita el vínculo de la carpeta
   keyfold folders                                     lista las carpetas vinculadas
   keyfold delete NOMBRE                               borra la clave y su valor
+  keyfold id                                          muestra la clave pública de este equipo (age1…), para que te compartan claves
+  keyfold share NOMBRE... | --all --to age1... [--to ...] [--out ARCHIVO]
+                                                      cifra las claves solo para esos destinatarios (pide Touch ID)
+  keyfold import [ARCHIVO]                            importa un paquete cifrado para este equipo (o desde stdin)
   keyfold mcp                                         servidor MCP por stdio para agentes
   keyfold connect claude|codex|cursor                 registra este binario como servidor MCP del agente",
             "Usage:
@@ -100,6 +113,10 @@ fn usage() -> i32 {
   keyfold unlink [FOLDER]                             remove the folder's link
   keyfold folders                                     list linked folders
   keyfold delete NAME                                 delete the key and its value
+  keyfold id                                          show this computer's public key (age1…), so others can share keys with you
+  keyfold share NAME... | --all --to age1... [--to ...] [--out FILE]
+                                                      encrypt the keys for those recipients only (asks for Touch ID)
+  keyfold import [FILE]                               import a package encrypted for this computer (or from stdin)
   keyfold mcp                                         MCP server over stdio for agents
   keyfold connect claude|codex|cursor                 register this binary as the agent's MCP server",
         )
@@ -120,6 +137,53 @@ fn connect_agent(args: &Arguments) -> i32 {
             1
         }
     }
+}
+
+/// `keyfold id`: this computer's public key. Safe to send to anyone.
+fn id(l: &Keyfold) -> Result<i32, KeyfoldError> {
+    println!("{}", l.public_key()?);
+    Ok(0)
+}
+
+/// `keyfold share`: an age package for the given public keys. It reads values, so it asks for
+/// Touch ID every time: an agent with a shell must not be able to send keys to itself.
+fn share(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
+    let all = args.has("--all");
+    if args.to.is_empty() || (all == !args.positionals.is_empty()) {
+        return Ok(usage());
+    }
+    let what = if all { t("todas tus claves", "all your keys") } else { args.positionals.join(", ") };
+    let reason = t(&format!("compartir {what} cifradas"), &format!("share {what}, encrypted"));
+    if !unlock::authenticate(&reason) {
+        eprintln!("{}", t("Cancelado. No se ha compartido nada.", "Cancelled. Nothing was shared."));
+        return Ok(1);
+    }
+    let package = if all { l.share_all(&args.to)? } else { l.share(&args.positionals, &args.to)? };
+    match &args.out {
+        Some(file) => {
+            std::fs::write(file, &package)?;
+            eprintln!("{}", t(&format!("Paquete cifrado en {file}"), &format!("Encrypted package in {file}")));
+        }
+        None => print!("{package}"),
+    }
+    Ok(0)
+}
+
+/// `keyfold import [FILE]`: opens a package made for this computer (stdin without FILE).
+fn import(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
+    let package = match first(args) {
+        Some(file) => std::fs::read_to_string(file)?,
+        None => {
+            let mut input = String::new();
+            std::io::stdin().read_to_string(&mut input)?;
+            input
+        }
+    };
+    for info in l.import(&package)? {
+        let projects = if info.projects.is_empty() { "-".to_string() } else { info.projects.join(", ") };
+        println!("{}", t(&format!("Importada: {}  ({projects})", info.reference), &format!("Imported: {}  ({projects})", info.reference)));
+    }
+    Ok(0)
 }
 
 fn status(info: &SlotInfo) -> String {
