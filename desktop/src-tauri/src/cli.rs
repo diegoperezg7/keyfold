@@ -1,7 +1,7 @@
 use crate::{connect, prompt};
 use keyfold_core::l10n::t;
 use keyfold_core::redactor::Redactor;
-use keyfold_core::{Config, Keyfold, KeyfoldError, SlotInfo};
+use keyfold_core::{project_for_dir, Config, Keyfold, KeyfoldError, SlotInfo};
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
@@ -72,7 +72,8 @@ fn usage() -> i32 {
   keyfold receive NOMBRE                              modo recepción: crea el hueco si falta y abre el campo seguro
   keyfold assign NOMBRE --project P                   asigna una clave existente a un proyecto
   keyfold list [--project P]                          lista nombres y estado, nunca valores
-  keyfold run --project P -- comando [args...]        ejecuta con las claves del proyecto (salida censurada)
+  keyfold run [--project P] -- comando [args...]      ejecuta con las claves del proyecto (salida censurada);
+                                                      sin --project usa el .keyfold más cercano (una línea con el proyecto)
   keyfold delete NOMBRE                               borra la clave y su valor
   keyfold mcp                                         servidor MCP por stdio para agentes
   keyfold connect claude|codex|cursor                 registra este binario como servidor MCP del agente",
@@ -83,7 +84,8 @@ fn usage() -> i32 {
   keyfold receive NAME                                receive mode: create the slot if missing and open the secure field
   keyfold assign NAME --project P                     assign an existing key to a project
   keyfold list [--project P]                          list names and status, never values
-  keyfold run --project P -- command [args...]        run with the project's keys (output redacted)
+  keyfold run [--project P] -- command [args...]      run with the project's keys (output redacted);
+                                                      without --project, uses the nearest .keyfold (one line: the project)
   keyfold delete NAME                                 delete the key and its value
   keyfold mcp                                         MCP server over stdio for agents
   keyfold connect claude|codex|cursor                 register this binary as the agent's MCP server",
@@ -202,8 +204,27 @@ fn delete(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
 /// Runs the command with only the project's keys in its environment and redacts
 /// their values from its stdout/stderr before passing them on.
 fn run_command(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
-    let Some(project) = args.project.as_deref() else { return Ok(usage()) };
+    // --project wins; otherwise the nearest .keyfold from the current folder up.
+    let project = match &args.project {
+        Some(p) => p.clone(),
+        None => match project_for_dir(&std::env::current_dir()?)? {
+            Some(p) => p,
+            None => return Ok(usage()),
+        },
+    };
+    let project = project.as_str();
     let Some((program, rest)) = args.command.split_first() else { return Ok(usage()) };
+    let known = l.projects()?;
+    if !known.contains(&project.to_string()) {
+        let list = if known.is_empty() { "-".to_string() } else { known.join(", ") };
+        eprintln!(
+            "{}",
+            t(
+                &format!("Aviso: el proyecto {project} no existe en Keyfold; se ejecuta sin claves. Proyectos: {list}"),
+                &format!("Warning: project {project} does not exist in Keyfold; running without keys. Projects: {list}"),
+            )
+        );
+    }
     let secrets = l.values_for(project)?;
     for slot in l.list(Some(project))?.iter().filter(|s| !s.has_value) {
         eprintln!("{}", t(&format!("Aviso: {} no tiene valor.", slot.name), &format!("Warning: {} has no value.", slot.name)));

@@ -30,8 +30,14 @@ impl Sandbox {
     }
 
     fn cli(&mut self, args: &[&str], stdin: Option<&str>) -> Output {
+        self.cli_in(&std::env::current_dir().unwrap(), args, stdin)
+    }
+
+    /// Same as `cli`, run from `dir` (for the `.keyfold` lookup).
+    fn cli_in(&mut self, dir: &std::path::Path, args: &[&str], stdin: Option<&str>) -> Output {
         let mut child = Command::new(env!("CARGO_BIN_EXE_keyfold"))
             .args(args)
+            .current_dir(dir)
             .env("KEYFOLD_HOME", &self.home)
             .env("KEYFOLD_SERVICE", &self.service)
             .stdin(Stdio::piped())
@@ -168,6 +174,34 @@ fn project_receives_only_assigned_keys() {
         args.extend(cmd.iter().map(String::as_str));
         assert_eq!(s.cli(&args, None).status, 0, "project {project} got the wrong keys");
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn run_uses_the_folder_project_file_and_warns_on_unknown_projects() {
+    let mut s = Sandbox::new("folder");
+    s.cli(&["create", "EXA_API_KEY", "--project", "alpha", "--no-prompt"], None);
+    s.cli(&["set", "EXA_API_KEY", "--stdin"], Some(&secret("exa")));
+
+    let repo = s.home.join("repo");
+    let sub = repo.join("src");
+    std::fs::create_dir_all(&sub).unwrap();
+    std::fs::write(repo.join(".keyfold"), "alpha\n").unwrap();
+
+    let has_key = ["run", "--", "/bin/sh", "-c", r#"test -n "$EXA_API_KEY""#];
+    let result = s.cli_in(&sub, &has_key, None);
+    assert_eq!(result.status, 0, "the .keyfold project did not get its key: {}", result.err);
+    assert!(result.err.is_empty(), "known project must not warn: {}", result.err);
+
+    // --project wins over the file, and an unknown project warns but still runs.
+    let result = s.cli_in(&sub, &["run", "--project", "alpah", "--", "/bin/sh", "-c", r#"test -z "${EXA_API_KEY+set}""#], None);
+    assert_eq!(result.status, 0);
+    assert!(result.err.contains("alpah") && result.err.contains("alpha"), "missing warning: {}", result.err);
+
+    // No --project and no .keyfold: usage, nothing runs.
+    let outside = s.home.join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    assert_eq!(s.cli_in(&outside, &["run", "--", "/bin/sh", "-c", "exit 0"], None).status, 64);
 }
 
 #[test]

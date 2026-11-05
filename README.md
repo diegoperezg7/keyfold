@@ -181,10 +181,15 @@ None of them returns a value. They return the name, the reference, whether a val
 | `keyfold set NAME [--stdin]` | Store or replace a value (window, or stdin) |
 | `keyfold assign NAME --project P` | Make a key available to a project |
 | `keyfold list [--project P]` | Names, status and projects. Never values |
-| `keyfold run --project P -- <command>` | Run with the project's keys in the environment, output masked |
+| `keyfold run [--project P] -- <command>` | Run with the project's keys in the environment, output masked. Without `--project`, uses the nearest `.keyfold` |
 | `keyfold delete NAME` | Delete a key and its value |
 | `keyfold mcp` | MCP server over stdio |
 | `keyfold connect claude\|codex\|cursor` | Register Keyfold as the agent's MCP server |
+
+To tie a folder to its project, put a `.keyfold` file at the repo root with the project name on one line
+(lines starting with `#` are comments). `keyfold run -- npm run dev` then works anywhere inside it.
+The file holds a name only, never a value, so it can be committed and the whole team shares it.
+If the project does not exist in your Keyfold, `run` warns and starts the command without keys.
 
 ## Security
 

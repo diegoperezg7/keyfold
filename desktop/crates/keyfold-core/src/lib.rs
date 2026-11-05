@@ -7,4 +7,4 @@ pub mod redactor;
 pub mod registry;
 pub mod store;
 
-pub use keyfold::{Config, Keyfold, KeyfoldError, SlotInfo};
+pub use keyfold::{project_for_dir, Config, Keyfold, KeyfoldError, SlotInfo, PROJECT_FILE};

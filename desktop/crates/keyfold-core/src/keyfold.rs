@@ -3,7 +3,7 @@ use crate::registry::{now_iso8601, Registry, RegistryStore, SecretSlot};
 use crate::store::{system_store, SecretStore, StoreError, DEFAULT_SERVICE};
 use serde::Serialize;
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// What anyone (UI, CLI, agent) may see about a key: never the value.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -188,6 +188,11 @@ impl Keyfold {
         Ok(self.store.get(name)?)
     }
 
+    /// Every project some key is assigned to, sorted.
+    pub fn projects(&self) -> Result<Vec<String>, KeyfoldError> {
+        Ok(self.registry.load()?.projects.into_keys().collect())
+    }
+
     fn info(&self, name: &str, registry: &Registry) -> SlotInfo {
         let projects = registry
             .projects
@@ -210,6 +215,28 @@ fn add(name: &str, project: &str, registry: &mut Registry) {
         names.push(name.to_string());
         names.sort();
     }
+}
+
+/// File that ties a folder to a project: `keyfold run` without `--project` uses it.
+pub const PROJECT_FILE: &str = ".keyfold";
+
+/// The project named in the nearest `.keyfold`, looking in `start` and then each parent.
+/// The file holds the project name on its first line that is not blank or a `#` comment.
+/// A file with no name is skipped; a file with an invalid name is an error, not a silent miss.
+pub fn project_for_dir(start: &Path) -> Result<Option<String>, KeyfoldError> {
+    for dir in start.ancestors() {
+        let path = dir.join(PROJECT_FILE);
+        if !path.is_file() {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path)?;
+        let Some(name) = text.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with('#')) else {
+            continue;
+        };
+        validate_project(name)?;
+        return Ok(Some(name.to_string()));
+    }
+    Ok(None)
 }
 
 /// `^[A-Z_][A-Z0-9_]*$`
@@ -273,6 +300,39 @@ mod tests {
         l.set_value("A_KEY", "secret-a").unwrap();
         assert_eq!(l.reveal("A_KEY").unwrap().as_deref(), Some("secret-a"));
         assert_eq!(l.reveal("MISSING"), Err(KeyfoldError::UnknownSecret("MISSING".into())));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn projects_lists_every_assigned_project() {
+        let (l, dir) = keyfold();
+        assert!(l.projects().unwrap().is_empty());
+        l.create_slot("A_KEY", Some("web")).unwrap();
+        l.create_slot("B_KEY", Some("api")).unwrap();
+        l.assign("A_KEY", "api").unwrap();
+        assert_eq!(l.projects().unwrap(), vec!["api", "web"]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn project_file_is_found_here_or_in_a_parent() {
+        let (_, dir) = keyfold();
+        let sub = dir.join("repo/src/deep");
+        std::fs::create_dir_all(&sub).unwrap();
+        assert_eq!(project_for_dir(&sub).unwrap(), None);
+
+        std::fs::write(dir.join("repo").join(PROJECT_FILE), "# Keyfold project\n\n  search-bot  \n").unwrap();
+        assert_eq!(project_for_dir(&sub).unwrap().as_deref(), Some("search-bot"));
+        assert_eq!(project_for_dir(&dir.join("repo")).unwrap().as_deref(), Some("search-bot"));
+
+        // The nearest file wins; one with no name is skipped.
+        std::fs::write(sub.join(PROJECT_FILE), "web\n").unwrap();
+        assert_eq!(project_for_dir(&sub).unwrap().as_deref(), Some("web"));
+        std::fs::write(sub.join(PROJECT_FILE), "# nothing yet\n").unwrap();
+        assert_eq!(project_for_dir(&sub).unwrap().as_deref(), Some("search-bot"));
+
+        std::fs::write(sub.join(PROJECT_FILE), "bad/name\n").unwrap();
+        assert_eq!(project_for_dir(&sub), Err(KeyfoldError::InvalidProject("bad/name".into())));
         let _ = std::fs::remove_dir_all(dir);
     }
 

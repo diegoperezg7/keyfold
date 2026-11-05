@@ -10,7 +10,9 @@ const SUPPORTED_VERSIONS: [&str; 4] = ["2025-11-25", "2025-06-18", "2025-03-26",
 
 const USAGE_NOTE: &str = "Never ask the user to paste a key into the chat or into a file. \
 To run the project with its keys, use the shell: `keyfold run --project <project> -- <command>`. \
-Do not write values into .env files; the keys are injected at run time.";
+Do not write values into .env files; the keys are injected at run time. \
+To tie a folder to its project, write a `.keyfold` file at the repo root whose only line is the project name; \
+then `keyfold run -- <command>` works there without `--project`.";
 
 fn tools() -> Value {
     json!([
