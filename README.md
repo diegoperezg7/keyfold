@@ -79,6 +79,8 @@ For another Mac of yours, use that Mac's public key with `--all` and move the pa
 ### In the app
 
 - **New key** creates a key by hand, no agent needed.
+- **Import from .env** finds the `.env` files in folders you choose and lists their variable names; the ones
+  you tick are stored with their project. Values go straight from the file to the credential store.
 - **Show** reveals a value to you after Touch ID (macOS; Windows does not ask yet, see [SECURITY.md](SECURITY.md)).
   It hides after 30 seconds and is kept out of screenshots. No CLI command or MCP tool can do this.
 

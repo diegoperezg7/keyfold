@@ -34,6 +34,8 @@ pub enum KeyfoldError {
     AlreadyHasValue(String),
     /// Generated length outside GENERATE_MIN..=GENERATE_MAX.
     InvalidLength(usize),
+    /// The same name was picked from `.env` files with different values.
+    EnvConflict(String),
     Store(String),
     Io(String),
 }
@@ -71,6 +73,10 @@ impl fmt::Display for KeyfoldError {
             Self::InvalidLength(n) => t(
                 &format!("Longitud no válida: {n}. Usa entre {GENERATE_MIN} y {GENERATE_MAX} caracteres."),
                 &format!("Invalid length: {n}. Use {GENERATE_MIN} to {GENERATE_MAX} characters."),
+            ),
+            Self::EnvConflict(n) => t(
+                &format!("{n} tiene valores distintos en los archivos elegidos. Marca solo uno."),
+                &format!("{n} has different values in the chosen files. Tick only one."),
             ),
             // Store and I/O errors carry OS codes and paths only, never a value.
             Self::Store(m) | Self::Io(m) => m.clone(),
@@ -386,7 +392,7 @@ fn random_secret(length: usize) -> Result<String, KeyfoldError> {
     Ok(out)
 }
 
-fn validate_name(name: &str) -> Result<(), KeyfoldError> {
+pub(crate) fn validate_name(name: &str) -> Result<(), KeyfoldError> {
     let mut chars = name.chars();
     let ok = matches!(chars.next(), Some(c) if c.is_ascii_uppercase() || c == '_')
         && chars.all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
@@ -394,7 +400,7 @@ fn validate_name(name: &str) -> Result<(), KeyfoldError> {
 }
 
 /// `^[A-Za-z0-9._-]+$`
-fn validate_project(project: &str) -> Result<(), KeyfoldError> {
+pub(crate) fn validate_project(project: &str) -> Result<(), KeyfoldError> {
     let ok = !project.is_empty() && project.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
     if ok { Ok(()) } else { Err(KeyfoldError::InvalidProject(project.into())) }
 }

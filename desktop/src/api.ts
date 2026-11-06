@@ -8,6 +8,35 @@ export interface SlotInfo {
   projects: string[]
 }
 
+/** One variable of one `.env` file found by `scanEnv`. There is no value field, by design. */
+export interface EnvCandidate {
+  name: string
+  file: string
+  project: string | null
+  /** Rows of the same name with equal values share it. */
+  valueGroup: number
+  /** Another file has this name with a different value. */
+  conflict: boolean
+  /** Keyfold already has a value under this name: importing replaces it. */
+  exists: boolean
+  placeholder: boolean
+  validName: boolean
+  /** Ticked when the list opens. */
+  suggested: boolean
+}
+
+export interface EnvScan {
+  candidates: EnvCandidate[]
+  files: string[]
+  /** The search stopped at its limit. */
+  truncated: boolean
+}
+
+export interface EnvPick {
+  file: string
+  name: string
+}
+
 export interface Boot {
   view: 'keys' | 'prompt'
   name?: string | null
@@ -67,6 +96,10 @@ export const api = {
   shareKeys: (names: string[], recipients: string[]) => invoke<string>('share_keys', { names, recipients }),
   /** Opens a package made for this computer; returns names and projects only. */
   importPackage: (pkg: string) => invoke<SlotInfo[]>('import_package', { package: pkg }),
+  /** Opens the folder picker and lists the variables of the `.env` files there. Null if cancelled. */
+  scanEnv: () => invoke<EnvScan | null>('scan_env'),
+  /** Stores the picked variables, read again from the files of the last scan. */
+  importEnv: (picks: EnvPick[]) => invoke<SlotInfo[]>('import_env', { picks }),
   openPrompt: (name: string) => invoke<void>('open_prompt', { name }),
   /** Null when this is the latest version. */
   checkUpdate: () => invoke<UpdateInfo | null>('check_update'),

@@ -1,4 +1,4 @@
-import type { SlotInfo } from './api'
+import type { EnvCandidate, EnvPick, SlotInfo } from './api'
 
 export type StatusFilter = 'all' | 'stored' | 'empty'
 export type SortKey = 'name' | 'status'
@@ -106,4 +106,41 @@ export function parseRecipients(text: string): string[] {
 /** An age X25519 public key: `age1` and 58 lowercase bech32 characters. */
 export function isPublicKey(key: string): boolean {
   return /^age1[02-9ac-hj-np-z]{58}$/.test(key)
+}
+
+/** Rows ticked when the `.env` list opens (indexes into `candidates`). */
+export function initialEnvPicks(candidates: EnvCandidate[]): Set<number> {
+  return new Set(candidates.flatMap((c, i) => (c.suggested ? [i] : [])))
+}
+
+/**
+ * Ticks or unticks a row. Ticking a row unticks the rows with the same name and a different
+ * value: a name keeps one value. Rows with an invalid name cannot be ticked.
+ */
+export function toggleEnvPick(candidates: EnvCandidate[], picks: Set<number>, index: number): Set<number> {
+  const next = new Set(picks)
+  const row = candidates[index]
+  if (next.has(index)) {
+    next.delete(index)
+    return next
+  }
+  if (!row?.validName) return next
+  candidates.forEach((c, i) => {
+    if (c.name === row.name && c.valueGroup !== row.valueGroup) next.delete(i)
+  })
+  next.add(index)
+  return next
+}
+
+export function envPicks(candidates: EnvCandidate[], picks: Set<number>): EnvPick[] {
+  return [...picks].sort((a, b) => a - b).map((i) => ({ file: candidates[i].file, name: candidates[i].name }))
+}
+
+/** Rows grouped by project, projects sorted, rows without a project last. */
+export function envGroups(candidates: EnvCandidate[]): { project: string | null; rows: number[] }[] {
+  const groups = new Map<string | null, number[]>()
+  candidates.forEach((c, i) => groups.set(c.project, [...(groups.get(c.project) ?? []), i]))
+  return [...groups.entries()]
+    .sort(([a], [b]) => (a === null ? 1 : b === null ? -1 : a.localeCompare(b)))
+    .map(([project, rows]) => ({ project, rows }))
 }
