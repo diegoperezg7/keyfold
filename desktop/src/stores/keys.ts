@@ -18,6 +18,8 @@ interface KeysState {
   assign: (name: string, project: string) => Promise<string | null>
   /** Takes the key out of the project. Returns null on success, or the error message from Rust. */
   unassign: (name: string, project: string) => Promise<string | null>
+  /** Deletes the key and its value. Returns null on success, or the error message from Rust. */
+  remove: (name: string) => Promise<string | null>
   /** Removes a folder link. Returns null on success, or the error message from Rust. */
   unlink: (path: string) => Promise<string | null>
   setSearch: (search: string) => void
@@ -70,6 +72,16 @@ export const useKeys = create<KeysState>((set, get) => ({
   unassign: async (name, project) => {
     try {
       await api.unassignKey(name, project)
+      await get().load()
+      return null
+    } catch (error) {
+      return String(error)
+    }
+  },
+
+  remove: async (name) => {
+    try {
+      await api.deleteKey(name)
       await get().load()
       return null
     } catch (error) {

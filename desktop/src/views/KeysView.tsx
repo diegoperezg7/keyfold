@@ -1,8 +1,9 @@
 import { listen } from '@tauri-apps/api/event'
-import { AlertCircle, ArrowDown, ArrowUp, CheckCircle2, Eye, FolderPlus, KeyRound, Plus, RefreshCw, RotateCw, Search, Share2, ShieldCheck, X } from 'lucide-react'
+import { AlertCircle, ArrowDown, ArrowUp, CheckCircle2, Eye, FolderPlus, KeyRound, Plus, RefreshCw, RotateCw, Search, Share2, ShieldCheck, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { api, boot, type Notice, type SlotInfo } from '../api'
 import { AssignDialog } from '../components/AssignDialog'
+import { DeleteDialog } from '../components/DeleteDialog'
 import { Logo } from '../components/Logo'
 import { NewKeyDialog } from '../components/NewKeyDialog'
 import { ShareDialog } from '../components/ShareDialog'
@@ -29,6 +30,7 @@ export function KeysView() {
   const { keys, loaded, loadFailed, search, filter, sort, project, load, setSearch, setFilter, setProject, toggleSort } = useKeys()
   const [assigning, setAssigning] = useState<SlotInfo | null>(null)
   const [revealing, setRevealing] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
   /** Keys to share: one from its row, or [] for every key with a value. */
   const [sharing, setSharing] = useState<string[] | null>(null)
   const [creating, setCreating] = useState(boot.action === 'new')
@@ -39,6 +41,7 @@ export function KeysView() {
     const stops = [
       listen('open-new-key', () => setCreating(true)),
       listen<Notice>('notice', (e) => setNotice(e.payload)),
+      listen<string>('key-saved', (e) => setNotice({ ok: true, text: t('savedNotice', { name: e.payload }) })),
     ]
     return () => stops.forEach((stop) => stop.then((f) => f()))
   }, [])
@@ -180,6 +183,9 @@ export function KeysView() {
                 </span>
                 {/* Secondary actions as quiet icons; the main one (add or reveal) at the edge. */}
                 <span className="actions cell-actions" role="cell">
+                  <IconButton label={t('deleteKey')} onClick={() => setDeleting(slot.name)}>
+                    <Trash2 size={15} aria-hidden />
+                  </IconButton>
                   {slot.hasValue && (
                     <>
                       <IconButton label={t('share')} onClick={() => setSharing([slot.name])}>
@@ -224,6 +230,13 @@ export function KeysView() {
       {creating && <NewKeyDialog onClose={() => setCreating(false)} />}
       {sharing && <ShareDialog names={sharing} onClose={() => setSharing(null)} />}
       {revealing && <RevealDialog name={revealing} onClose={closeReveal} />}
+      {deleting && (
+        <DeleteDialog
+          name={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => setNotice({ ok: true, text: t('deletedNotice', { name: deleting }) })}
+        />
+      )}
       <UpdateNotice />
       <UpdatedDialog />
     </div>

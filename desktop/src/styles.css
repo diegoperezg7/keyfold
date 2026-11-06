@@ -221,6 +221,16 @@ input {
   background: var(--accent-hover);
 }
 
+.btn-danger {
+  background: var(--danger);
+  border-color: transparent;
+  color: #ffffff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 88%, #000000);
+}
+
 .btn-sm {
   height: 28px;
   padding: 0 12px;
@@ -331,6 +341,11 @@ input {
   background: var(--accent-soft);
   color: var(--accent);
   flex: none;
+}
+
+.icon-badge-danger {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
 }
 
 .icon-badge-lg {

@@ -1,7 +1,7 @@
 use crate::{connect, prompt, unlock};
 use keyfold_core::l10n::t;
 use keyfold_core::redactor::Redactor;
-use keyfold_core::{Config, Keyfold, KeyfoldError, SlotInfo};
+use keyfold_core::{Config, Keyfold, KeyfoldError, SlotInfo, GENERATE_DEFAULT};
 use std::path::PathBuf;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
@@ -13,13 +13,15 @@ struct Arguments {
     to: Vec<String>,
     /// `--out FILE` (share).
     out: Option<String>,
+    /// `--length N` (generate).
+    length: Option<String>,
     flags: Vec<String>,
     command: Vec<String>,
 }
 
 impl Arguments {
     fn parse(raw: &[String]) -> Result<Self, KeyfoldError> {
-        let mut args = Self { positionals: vec![], project: None, to: vec![], out: None, flags: vec![], command: vec![] };
+        let mut args = Self { positionals: vec![], project: None, to: vec![], out: None, length: None, flags: vec![], command: vec![] };
         let mut it = raw.iter();
         while let Some(arg) = it.next() {
             match arg.as_str() {
@@ -29,6 +31,7 @@ impl Arguments {
                 }
                 "--project" => args.project = Some(it.next().cloned().ok_or(KeyfoldError::InvalidProject(String::new()))?),
                 "--to" => args.to.push(it.next().cloned().ok_or(KeyfoldError::InvalidRecipient(String::new()))?),
+                "--length" => args.length = Some(it.next().cloned().ok_or(KeyfoldError::InvalidLength(0))?),
                 "--out" => args.out = Some(it.next().cloned().ok_or(KeyfoldError::Io("--out needs a file".into()))?),
                 flag if flag.starts_with("--") => args.flags.push(flag.into()),
                 other => args.positionals.push(other.into()),
@@ -52,6 +55,7 @@ pub fn run(config: &Config, argv: &[String]) -> i32 {
     let result = match command {
         "create" => create(config, &keyfold, &args),
         "set" => set(config, &keyfold, &args),
+        "generate" => generate(&keyfold, &args),
         "receive" => receive(config, &keyfold, &args),
         "assign" => assign(&keyfold, &args),
         "unassign" => unassign(&keyfold, &args),
@@ -83,6 +87,7 @@ fn usage() -> i32 {
   keyfold                                             abre la app
   keyfold create NOMBRE [--project P] [--no-prompt]   crea el hueco y abre la ventana para pegar el valor
   keyfold set NOMBRE [--stdin]                        guarda o cambia el valor (ventana, o stdin)
+  keyfold generate NOMBRE [--project P] [--length N]  genera un secreto aleatorio y lo guarda (no lo muestra; N: 16-256, por defecto 48)
   keyfold receive NOMBRE                              modo recepción: crea el hueco si falta y abre el campo seguro
   keyfold assign NOMBRE --project P                   asigna una clave existente a un proyecto
   keyfold unassign NOMBRE --project P                 quita la clave del proyecto (la clave y su valor se quedan)
@@ -103,6 +108,7 @@ fn usage() -> i32 {
   keyfold                                             open the app
   keyfold create NAME [--project P] [--no-prompt]     create the slot and open the window to paste the value
   keyfold set NAME [--stdin]                          store or replace the value (window, or stdin)
+  keyfold generate NAME [--project P] [--length N]    generate a random secret and store it (never shown; N: 16-256, default 48)
   keyfold receive NAME                                receive mode: create the slot if missing and open the secure field
   keyfold assign NAME --project P                     assign an existing key to a project
   keyfold unassign NAME --project P                   remove the key from the project (the key and its value stay)
@@ -196,6 +202,21 @@ fn status(info: &SlotInfo) -> String {
 
 fn first(args: &Arguments) -> Option<&str> {
     args.positionals.first().map(String::as_str)
+}
+
+/// `keyfold generate NAME`: a random secret made and stored here. Prints the reference only.
+fn generate(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
+    let Some(name) = first(args) else { return Ok(usage()) };
+    let length = match &args.length {
+        Some(n) => n.parse().map_err(|_| KeyfoldError::InvalidLength(0))?,
+        None => GENERATE_DEFAULT,
+    };
+    let info = l.generate(name, args.project.as_deref(), length)?;
+    println!("{}", t(&format!("Secreto generado y guardado: {}", info.reference), &format!("Secret generated and stored: {}", info.reference)));
+    if let Some(p) = &args.project {
+        println!("{}", t(&format!("Proyecto: {p}"), &format!("Project: {p}")));
+    }
+    Ok(0)
 }
 
 fn create(config: &Config, l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {

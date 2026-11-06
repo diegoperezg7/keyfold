@@ -107,8 +107,27 @@ mod mac {
             match delete_generic_password(&self.service, name) {
                 Ok(()) => Ok(()),
                 Err(e) if e.code() == ERR_NOT_FOUND => Ok(()),
+                // Saved by another build (e.g. an older unsigned one): the Keychain only lets that
+                // binary delete it. Apple's `security` tool can, asking the user if macOS needs to.
+                Err(e) if e.code() == ERR_INVALID_OWNER_EDIT => delete_with_security_tool(&self.service, name),
                 Err(e) => Err(error(e)),
             }
+        }
+    }
+
+    const ERR_INVALID_OWNER_EDIT: i32 = -25244; // errSecInvalidOwnerEdit
+    const SECURITY_NOT_FOUND: i32 = 44; // `security` exit code when the item does not exist
+
+    fn delete_with_security_tool(service: &str, name: &str) -> Result<(), StoreError> {
+        // stdout lists the item's attributes (never its value); it is discarded all the same.
+        let output = std::process::Command::new("/usr/bin/security")
+            .args(["delete-generic-password", "-s", service, "-a", name])
+            .stdout(std::process::Stdio::null())
+            .output()
+            .map_err(|e| StoreError(format!("security: {e}")))?;
+        match output.status.code() {
+            Some(0) | Some(SECURITY_NOT_FOUND) => Ok(()),
+            _ => Err(StoreError(format!("security: {}", String::from_utf8_lossy(&output.stderr).trim()))),
         }
     }
 }

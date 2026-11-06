@@ -53,6 +53,8 @@ export const api = {
   listFolders: () => invoke<Record<string, string>>('list_folders'),
   unlinkFolder: (path: string) => invoke<boolean>('unlink_folder', { path }),
   unassignKey: (name: string, project: string) => invoke<SlotInfo>('unassign_key', { name, project }),
+  /** Deletes the key and its value. Keys window only. */
+  deleteKey: (name: string) => invoke<void>('delete_key', { name }),
   /** One-way: the value goes to the credential store and nothing comes back. */
   saveSecret: (name: string, value: string) => invoke<void>('save_secret', { name, value }),
   /** Keys window only, on a click. Null when the key has no value. Call hideValue when done. */

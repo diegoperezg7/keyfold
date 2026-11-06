@@ -81,7 +81,7 @@ impl Sandbox {
 
 impl Drop for Sandbox {
     fn drop(&mut self) {
-        for name in ["EXA_API_KEY", "OTHER_KEY"] {
+        for name in ["EXA_API_KEY", "OTHER_KEY", "JWT_SECRET"] {
             let _ = Command::new(env!("CARGO_BIN_EXE_keyfold"))
                 .args(["delete", name])
                 .env("KEYFOLD_HOME", &self.home)
@@ -109,6 +109,54 @@ fn secret(tag: &str) -> String {
 #[cfg(unix)]
 fn check_env_equals_stdin(var: &str) -> Vec<String> {
     vec!["/bin/sh".into(), "-c".into(), format!(r#"read v; test "$v" = "${var}""#)]
+}
+
+/// Reads a stored value back through `keyfold run` into a file in the sandbox (never to stdout),
+/// so the test can check that no output carried it.
+#[cfg(unix)]
+fn stored_value(s: &mut Sandbox, var: &str, project: &str) -> String {
+    let file = s.home.join(format!("{var}.check"));
+    let script = format!(r#"printf %s "${var}" > '{}'"#, file.display());
+    let ran = s.cli(&["run", "--project", project, "--", "/bin/sh", "-c", &script], None);
+    assert_eq!(ran.status, 0, "{}", ran.err);
+    std::fs::read_to_string(&file).unwrap()
+}
+
+#[cfg(unix)]
+#[test]
+fn generate_stores_a_random_secret_and_only_returns_the_reference() {
+    let mut s = Sandbox::new("generate");
+    let made = s.cli(&["generate", "JWT_SECRET", "--project", "demo", "--length", "32"], None);
+    assert_eq!(made.status, 0, "{}", made.err);
+    assert!(made.out.contains("keyfold://JWT_SECRET"));
+    let value = stored_value(&mut s, "JWT_SECRET", "demo");
+    assert_eq!(value.len(), 32);
+    assert!(value.chars().all(|c| c.is_ascii_alphanumeric()));
+
+    // Never overwrites: the second run fails and the value stays.
+    let again = s.cli(&["generate", "JWT_SECRET"], None);
+    assert_ne!(again.status, 0);
+    assert_eq!(stored_value(&mut s, "JWT_SECRET", "demo"), value);
+    assert_ne!(s.cli(&["generate", "OTHER_KEY", "--length", "8"], None).status, 0);
+
+    // Same through MCP.
+    let call = |id: i64, args: Value| json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"generate_secret","arguments":args}});
+    let replies = s.mcp(&[
+        call(1, json!({"name": "OTHER_KEY", "project": "demo"})),
+        call(2, json!({"name": "OTHER_KEY"})),
+        call(3, json!({"name": "EXA_API_KEY", "length": 8})),
+    ]);
+    let made = &replies[0]["result"]["structuredContent"];
+    assert_eq!(made["reference"], "keyfold://OTHER_KEY");
+    assert_eq!(made["hasValue"], json!(true));
+    assert_eq!(replies[1]["result"]["isError"], json!(true), "must not overwrite");
+    assert_eq!(replies[2]["result"]["isError"], json!(true), "length below the minimum");
+    let other = stored_value(&mut s, "OTHER_KEY", "demo");
+    assert_eq!(other.len(), 48);
+    assert_ne!(other, value);
+
+    s.assert_never_printed(&value);
+    s.assert_never_printed(&other);
 }
 
 #[test]
@@ -251,7 +299,7 @@ fn mcp_tools_never_return_the_value() {
     );
     let mut tools: Vec<&str> = first[1]["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
     tools.sort();
-    assert_eq!(tools, ["assign_secret", "create_secret", "link_folder", "list_secrets", "request_secret_value", "unassign_secret", "unlink_folder"]);
+    assert_eq!(tools, ["assign_secret", "create_secret", "generate_secret", "link_folder", "list_secrets", "request_secret_value", "unassign_secret", "unlink_folder"]);
     assert_eq!(first[2]["result"]["structuredContent"]["reference"], "keyfold://EXA_API_KEY");
 
     assert_eq!(s.cli(&["set", "EXA_API_KEY", "--stdin"], Some(&value)).status, 0);
