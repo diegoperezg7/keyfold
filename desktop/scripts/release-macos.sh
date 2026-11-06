@@ -1,11 +1,10 @@
 #!/bin/sh
 # Build, sign and (optionally) notarize Keyfold for macOS.
 #
-#   APPLE_SIGNING_IDENTITY=<SHA-1 fingerprint or "Developer ID Application: Your Name (TEAMID)"> \
-#   KEYFOLD_NOTARY_PROFILE=keyfold-notary \
-#   ./scripts/release-macos.sh
+#   npm run dmg                      (same as ./scripts/release-macos.sh)
+#   KEYFOLD_NOTARY_PROFILE=keyfold-notary npm run dmg   (also notarizes)
 #
-# APPLE_SIGNING_IDENTITY  required. A "Developer ID Application" identity from your login
+# APPLE_SIGNING_IDENTITY  optional. Default: the first "Developer ID Application" identity in your login
 #                         keychain (security find-identity -v -p codesigning).
 # KEYFOLD_NOTARY_PROFILE  optional. A notarytool keychain profile created once with
 #                         xcrun notarytool store-credentials <name> --apple-id <id> --team-id <team>
@@ -23,8 +22,14 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
+# Without APPLE_SIGNING_IDENTITY, use the first Developer ID Application identity in the keychain,
+# by its SHA-1 fingerprint (see the note on accents below).
 if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
-  echo "APPLE_SIGNING_IDENTITY is not set. Available identities:" >&2
+  APPLE_SIGNING_IDENTITY=$(security find-identity -v -p codesigning | awk '/"Developer ID Application/ { print $2; exit }')
+  export APPLE_SIGNING_IDENTITY
+fi
+if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
+  echo "No Developer ID Application identity found and APPLE_SIGNING_IDENTITY is not set. Available identities:" >&2
   security find-identity -v -p codesigning >&2
   exit 64
 fi
