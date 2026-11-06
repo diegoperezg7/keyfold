@@ -340,8 +340,10 @@ mod tests {
         Keyfold::new(Box::new(MemoryStore::default()), RegistryStore::new(&dir.join("home")))
     }
 
+    /// `rel` uses `/`; each part is joined on its own so the path has this OS's separators,
+    /// like the ones the scan returns.
     fn write(dir: &Path, rel: &str, text: &str) -> String {
-        let path = dir.join(rel);
+        let path = rel.split('/').fold(dir.to_path_buf(), |p, part| p.join(part));
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, text).unwrap();
         path.to_string_lossy().into_owned()
@@ -405,7 +407,7 @@ mod tests {
         let found = |home: Option<&Path>| {
             let (mut out, mut budget) = (Vec::new(), MAX_ENTRIES);
             find_env_files(&dir, home, 0, &mut budget, &mut out);
-            let mut rel: Vec<String> = out.iter().map(|p| p.strip_prefix(&dir).unwrap().to_string_lossy().into_owned()).collect();
+            let mut rel: Vec<String> = out.iter().map(|p| p.strip_prefix(&dir).unwrap().to_string_lossy().replace('\\', "/")).collect();
             rel.sort();
             rel
         };
