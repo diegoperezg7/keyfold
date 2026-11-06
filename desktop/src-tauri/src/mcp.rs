@@ -2,7 +2,7 @@
 //! Same tools and contract as the Swift version: no tool ever returns a value.
 
 use crate::prompt;
-use keyfold_core::{Config, Keyfold, KeyfoldError, SlotInfo};
+use keyfold_core::{Config, Keyfold, KeyfoldError, SlotInfo, GENERATE_DEFAULT, GENERATE_MAX, GENERATE_MIN};
 use serde_json::{json, Map, Value};
 use std::io::{BufRead, Write};
 
@@ -32,6 +32,19 @@ fn tools() -> Value {
                     "name": { "type": "string", "description": "UPPER_SNAKE_CASE env var name, e.g. EXA_API_KEY." },
                     "project": { "type": "string", "description": "Project name (letters, digits, . _ -)." },
                     "prompt": { "type": "boolean", "description": "Open the paste window if the slot has no value. Default true." }
+                },
+                "required": ["name"]
+            }
+        },
+        {
+            "name": "generate_secret",
+            "description": format!("Generate a random secret on this computer and store it, for secrets the user owns: JWT_SECRET, ENCRYPTION_KEY, database or admin passwords. Never for third-party API keys (use create_secret: the user pastes those). Letters and digits only. The value is never returned, only keyfold://NAME. Refuses to overwrite a key that already has a value. {USAGE_NOTE}"),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "UPPER_SNAKE_CASE env var name, e.g. JWT_SECRET." },
+                    "project": { "type": "string", "description": "Project name (letters, digits, . _ -)." },
+                    "length": { "type": "integer", "minimum": GENERATE_MIN, "maximum": GENERATE_MAX, "description": format!("Characters. Default {GENERATE_DEFAULT}.") }
                 },
                 "required": ["name"]
             }
@@ -113,6 +126,15 @@ fn call_tool(config: &Config, l: &Keyfold, name: &str, args: &Map<String, Value>
                 info = l.slot(secret)?;
             }
             Ok(slot_json(&info))
+        }
+        "generate_secret" => {
+            let secret = string_arg(args, "name")?;
+            let project = args.get("project").and_then(Value::as_str);
+            let length = match args.get("length") {
+                None | Some(Value::Null) => GENERATE_DEFAULT,
+                Some(v) => v.as_u64().map(|n| n as usize).ok_or(KeyfoldError::InvalidLength(0))?,
+            };
+            Ok(slot_json(&l.generate(secret, project, length)?))
         }
         "request_secret_value" => {
             let secret = string_arg(args, "name")?;

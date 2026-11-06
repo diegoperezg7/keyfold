@@ -136,6 +136,15 @@ fn unassign_key(state: State<AppState>, name: String, project: String) -> Result
     state.keyfold().unassign(&name, &project).map_err(|e| e.to_string())
 }
 
+/// Deletes the key and its value. Keys window only: the paste window never deletes.
+#[tauri::command]
+fn delete_key(window: WebviewWindow, state: State<AppState>, name: String) -> Result<(), String> {
+    if state.prompt.is_some() || window.label() != "main" {
+        return Err("not available in this window".into());
+    }
+    state.keyfold().delete(&name).map_err(|e| e.to_string())
+}
+
 /// Folder path -> project, for the keys window.
 #[tauri::command]
 fn list_folders(state: State<AppState>) -> Result<std::collections::BTreeMap<String, String>, String> {
@@ -149,12 +158,15 @@ fn unlink_folder(state: State<AppState>, path: String) -> Result<bool, String> {
 
 /// Stores the value. The value is not logged and the reply carries no value.
 #[tauri::command]
-fn save_secret(state: State<AppState>, name: String, value: String) -> Result<(), String> {
+fn save_secret(app: AppHandle, state: State<AppState>, name: String, value: String) -> Result<(), String> {
     let value = value.trim();
     state.keyfold().set_value(&name, value).map_err(|e| e.to_string())?;
     clear_clipboard_if_holds(value);
     if let Some(request) = &state.prompt {
         std::fs::write(&request.result_file, "saved").map_err(|e| e.to_string())?;
+    } else {
+        // Paste window opened from the keys window: tell it which key was saved (name only).
+        let _ = app.emit("key-saved", &name);
     }
     Ok(())
 }
@@ -347,6 +359,7 @@ pub fn run(config: Config, mode: Mode) -> i32 {
             create_key,
             assign_key,
             unassign_key,
+            delete_key,
             list_folders,
             unlink_folder,
             save_secret,

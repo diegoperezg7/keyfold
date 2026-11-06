@@ -30,6 +30,10 @@ pub enum KeyfoldError {
     InvalidPackage,
     /// None of the chosen keys has a value.
     NothingToShare,
+    /// `generate` never replaces a value that is already stored.
+    AlreadyHasValue(String),
+    /// Generated length outside GENERATE_MIN..=GENERATE_MAX.
+    InvalidLength(usize),
     Store(String),
     Io(String),
 }
@@ -60,6 +64,14 @@ impl fmt::Display for KeyfoldError {
             ),
             Self::InvalidPackage => t("No es un paquete de Keyfold válido.", "Not a valid Keyfold package."),
             Self::NothingToShare => t("Ninguna de esas claves tiene valor.", "None of those keys has a value."),
+            Self::AlreadyHasValue(n) => t(
+                &format!("{n} ya tiene valor y no se sobrescribe. Para cambiarlo: keyfold set {n}, o bórrala antes."),
+                &format!("{n} already has a value and is not overwritten. To change it: keyfold set {n}, or delete it first."),
+            ),
+            Self::InvalidLength(n) => t(
+                &format!("Longitud no válida: {n}. Usa entre {GENERATE_MIN} y {GENERATE_MAX} caracteres."),
+                &format!("Invalid length: {n}. Use {GENERATE_MIN} to {GENERATE_MAX} characters."),
+            ),
             // Store and I/O errors carry OS codes and paths only, never a value.
             Self::Store(m) | Self::Io(m) => m.clone(),
         };
@@ -125,6 +137,26 @@ impl Keyfold {
         }
         self.registry.save(&registry)?;
         Ok(self.info(name, &registry))
+    }
+
+    /// Creates the key if needed and stores a random value made on this computer, for secrets
+    /// you own (JWT_SECRET, ENCRYPTION_KEY, database passwords). The value is never returned:
+    /// only the slot info, whose reference is keyfold://NAME. Refuses to replace a stored value.
+    pub fn generate(&self, name: &str, project: Option<&str>, length: usize) -> Result<SlotInfo, KeyfoldError> {
+        validate_name(name)?;
+        if let Some(p) = project {
+            validate_project(p)?;
+        }
+        if !(GENERATE_MIN..=GENERATE_MAX).contains(&length) {
+            return Err(KeyfoldError::InvalidLength(length));
+        }
+        if self.registry.load()?.secrets.contains_key(name) && self.store.has_value(name) {
+            return Err(KeyfoldError::AlreadyHasValue(name.into()));
+        }
+        let value = random_secret(length)?;
+        self.create_slot(name, project)?;
+        self.set_value(name, &value)?;
+        self.slot(name)
     }
 
     pub fn set_value(&self, name: &str, value: &str) -> Result<(), KeyfoldError> {
@@ -330,6 +362,30 @@ fn canonical(folder: &Path) -> Result<String, KeyfoldError> {
 }
 
 /// `^[A-Z_][A-Z0-9_]*$`
+/// Generated secrets: 48 letters and digits (~285 bits) unless asked otherwise.
+pub const GENERATE_DEFAULT: usize = 48;
+pub const GENERATE_MIN: usize = 16;
+pub const GENERATE_MAX: usize = 256;
+const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+/// Letters and digits only, so the value works as an env var, in a URL or as a database
+/// password without escaping. OS randomness; rejection sampling keeps every character equally likely.
+fn random_secret(length: usize) -> Result<String, KeyfoldError> {
+    let limit = 256 - 256 % ALPHABET.len(); // 248: bytes at or above it would favour some characters
+    let mut out = String::with_capacity(length);
+    let mut buf = [0u8; 64];
+    while out.len() < length {
+        getrandom::getrandom(&mut buf).map_err(|e| KeyfoldError::Io(format!("random: {e}")))?;
+        for &b in buf.iter().filter(|&&b| (b as usize) < limit) {
+            if out.len() == length {
+                break;
+            }
+            out.push(ALPHABET[b as usize % ALPHABET.len()] as char);
+        }
+    }
+    Ok(out)
+}
+
 fn validate_name(name: &str) -> Result<(), KeyfoldError> {
     let mut chars = name.chars();
     let ok = matches!(chars.next(), Some(c) if c.is_ascii_uppercase() || c == '_')
@@ -355,6 +411,38 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("keyfold-core-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         (Keyfold::new(Box::new(MemoryStore::default()), RegistryStore::new(&dir)), dir)
+    }
+
+    #[test]
+    fn generate_stores_a_random_value_and_returns_only_the_reference() {
+        let (l, dir) = keyfold();
+        let info = l.generate("JWT_SECRET", Some("demo"), GENERATE_DEFAULT).unwrap();
+        let value = l.reveal("JWT_SECRET").unwrap().unwrap();
+        assert_eq!(value.len(), GENERATE_DEFAULT);
+        assert!(value.bytes().all(|b| ALPHABET.contains(&b)));
+        assert_eq!(info, SlotInfo { name: "JWT_SECRET".into(), reference: "keyfold://JWT_SECRET".into(), has_value: true, projects: vec!["demo".into()] });
+        // What an agent receives (the serialized info) never carries the value.
+        assert!(!serde_json::to_string(&info).unwrap().contains(&value));
+        // Two runs never give the same value.
+        l.generate("OTHER_SECRET", None, GENERATE_DEFAULT).unwrap();
+        assert_ne!(l.reveal("OTHER_SECRET").unwrap().unwrap(), value);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn generate_never_overwrites_and_checks_length() {
+        let (l, dir) = keyfold();
+        l.create_slot("DB_PASSWORD", None).unwrap();
+        l.set_value("DB_PASSWORD", "chosen-by-hand").unwrap();
+        assert_eq!(l.generate("DB_PASSWORD", None, 32), Err(KeyfoldError::AlreadyHasValue("DB_PASSWORD".into())));
+        assert_eq!(l.reveal("DB_PASSWORD").unwrap().as_deref(), Some("chosen-by-hand"));
+        // An empty slot (created earlier, no value yet) is filled.
+        l.create_slot("EMPTY_SECRET", None).unwrap();
+        assert!(l.generate("EMPTY_SECRET", None, 32).unwrap().has_value);
+        assert_eq!(l.generate("SHORT", None, GENERATE_MIN - 1), Err(KeyfoldError::InvalidLength(GENERATE_MIN - 1)));
+        assert_eq!(l.generate("LONG", None, GENERATE_MAX + 1), Err(KeyfoldError::InvalidLength(GENERATE_MAX + 1)));
+        assert!(l.list(None).unwrap().iter().all(|k| k.name != "SHORT" && k.name != "LONG"));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

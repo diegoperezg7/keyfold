@@ -8,4 +8,4 @@ pub mod registry;
 mod share;
 pub mod store;
 
-pub use keyfold::{project_for_dir, Config, Keyfold, KeyfoldError, SlotInfo, PROJECT_FILE};
+pub use keyfold::{project_for_dir, Config, Keyfold, KeyfoldError, SlotInfo, GENERATE_DEFAULT, GENERATE_MAX, GENERATE_MIN, PROJECT_FILE};
