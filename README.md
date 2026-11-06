@@ -6,10 +6,11 @@
 
 **A key wallet for your coding agent: it can use your API keys, but never see them.**
 
-Keep the keys of all your projects in one place. Paste each key once in a native window; Keyfold stores it<br>
-encrypted in your OS credential store, hands your agent a reference, and injects the real value only when your app runs.
+Paste each key once. Keyfold keeps it in your OS credential store, gives your agent a reference,<br>
+and injects the value only when your app runs.
 
-[How it works](#how-it-works) · [Install](#install) · [Connect your agent](#connect-your-agent) · [Commands](#commands) · [Security](#security)
+<a href="https://github.com/diegoperezg7/keyfold/releases/latest"><b>Download for macOS</b></a> ·
+[How it works](#how-it-works) · [Connect your agent](#connect-your-agent) · [Commands](#commands) · [Security](#security)
 
 ![macOS](https://img.shields.io/badge/macOS-tested-d6336c)
 ![Windows](https://img.shields.io/badge/Windows-builds%20in%20CI-6a6a76)
@@ -26,24 +27,20 @@ encrypted in your OS credential store, hands your agent a reference, and injects
 
 ## Why it exists
 
-Keyfold is a personal project: the tool I use every day to work with my own coding agents.
-The keys of all my projects live in it, and my agents run those projects with them without ever reading one.
-It is open source in case it is useful to you too.
+I use Keyfold every day with my own coding agents: they run my projects with the keys, without reading one.
+It is open source in case it helps you too.
 
 ## The problem
 
-You just created an API key and your agent needs it. Today that means pasting it into the chat,
-or into a `.env` the agent can `cat`. Either way the key ends up in a transcript, a log or a commit.
-
-Keyfold splits the job in two:
+Giving your agent a key means pasting it into the chat or a `.env` it can read. Either way it ends up
+in a transcript, a log or a commit. Keyfold splits the job in two:
 
 | | Who handles it | Where it lives |
 |---|---|---|
 | **The value** | Only you, once, in a native window | macOS Keychain / Windows Credential Manager |
 | **The name** (`EXA_API_KEY`) | You and your agent | A small registry of names and projects |
 
-Your agent creates the slot, wires it into the project and runs the app. It never receives the value:
-not in tool results, not in command output, not in logs.
+Your agent creates the slot, wires it up and runs the app. It never receives the value.
 
 ## How it works
 
@@ -69,38 +66,30 @@ A typical session:
 
 ### Working with a team
 
-Keyfold has no cloud and no accounts, on purpose. Each person keeps their own keys on their own machine:
-
-1. Someone gets the key (from the provider, or a teammate shares it encrypted, see below).
-2. They tell their agent "I have it". The paste window opens on their machine.
-3. The project only refers to the key by name, so the same code works for everyone. Each teammate's
-   Keyfold injects their own copy.
-
-No key in the repo, no key in the chat, no `.env` to pass around.
+No cloud, no accounts. Each person keeps their keys on their own machine. The project refers to a key
+only by name, so the same code works for everyone and each Keyfold injects its own copy.
 
 ### Sharing keys, and your keys on another Mac
 
-Each Keyfold has a public key (`keyfold id`, or **Share › Receive** in the app). To share keys,
-encrypt them to the recipient's public key: `keyfold share NAME --to age1…`, or **Share › Send**.
-You get an [age](https://age-encryption.org) package you can send over any channel: only that
-recipient can open it, with `keyfold import` or **Share › Receive**. Sharing always asks for Touch ID,
-so an agent cannot send your keys to itself.
-
-To have your keys on another Mac, do the same with that Mac's public key and `--all`, and move the
-package with AirDrop. Each Mac keeps its own private key in its Keychain; it never leaves the Mac.
+`keyfold share NAME --to age1…` (or **Share › Send**) encrypts keys to someone's public key (`keyfold id`)
+as an [age](https://age-encryption.org) package; only they can open it, with `keyfold import` or
+**Share › Receive**. Sharing asks for Touch ID, so an agent cannot send keys to itself.
+For another Mac of yours, use that Mac's public key with `--all` and move the package with AirDrop.
 
 ### In the app
 
-- **New key** creates a key by hand and opens the paste window, no agent needed.
-- **Show** displays a stored value to you. On macOS, the first time after you open the window (and again each
-  day) it asks for Touch ID or your password; Windows does not ask yet (see [SECURITY.md](SECURITY.md)). The value hides after 30 seconds, and while it is shown
-  the window is left out of screenshots. Your agent has no way to do this: there is no CLI command
-  or MCP tool for it.
+- **New key** creates a key by hand, no agent needed.
+- **Show** reveals a value to you after Touch ID (macOS; Windows does not ask yet, see [SECURITY.md](SECURITY.md)).
+  It hides after 30 seconds and is kept out of screenshots. No CLI command or MCP tool can do this.
 
 ## Install
 
-**macOS (Apple Silicon):** download the signed and notarized DMG from the
-[latest release](https://github.com/diegoperezg7/keyfold/releases/latest) and drag Keyfold to Applications.
+**macOS (Apple Silicon):** download the DMG from the [latest release](https://github.com/diegoperezg7/keyfold/releases/latest)
+(signed and notarized) and drag Keyfold to Applications.
+
+<p align="center">
+  <img src="docs/images/dmg-window.png" width="560" alt="Keyfold installer window: drag the app to Applications">
+</p>
 
 **Other platforms, or from source.** You need:
 
@@ -116,59 +105,44 @@ npx tauri build --bundles app       # macOS: target/release/bundle/macos/Keyfold
 # npx tauri build --bundles nsis    # Windows: target/release/bundle/nsis/Keyfold_*-setup.exe
 ```
 
-On macOS, move the app to Applications (`ditto target/release/bundle/macos/Keyfold.app /Applications/Keyfold.app`).
+On macOS, copy it with `ditto target/release/bundle/macos/Keyfold.app /Applications/Keyfold.app`.
 
-The same binary is the app, the CLI and the MCP server. Link it into your `PATH` so `keyfold` works in
-every shell, including your agent's (an `alias` is not enough: non-interactive shells ignore it):
+The same binary is the app, the CLI and the MCP server. Link it into your `PATH` (an `alias` is not
+enough: your agent's shell ignores it):
 
 ```sh
 sudo ln -sf /Applications/Keyfold.app/Contents/MacOS/keyfold /usr/local/bin/keyfold
 keyfold list
 ```
 
-If you skip this, the MCP server tells your agent the binary's full path, so `keyfold run` still works for it.
-
-Open it once (`open -a Keyfold`). It stays in the menu bar while it runs, with quick access to
-the keys that are waiting for a value, a new key, and connecting your agent. Closing the window
-does not quit it; use **Quit Keyfold** in that menu.
+Without it, the MCP server tells your agent the full path. Open the app once (`open -a Keyfold`):
+it stays in the menu bar; quit it from there.
 
 ### Updates
 
-A Keyfold installed from a release DMG updates itself. When a newer release is out, the keys
-window shows it in a corner: **Update** downloads it with a progress bar, checks its signature,
-installs it and restarts. Back in the app, a window confirms the install and lists what changed.
-Builds made from source do not update themselves; pull and build again.
+Installed from a release DMG, Keyfold updates itself: **Update** in the keys window downloads,
+verifies, installs and restarts. Builds from source do not; pull and build again.
 
 ### Signed DMG (maintainers)
 
-`desktop/scripts/release-macos.sh` builds the app and a drag-to-install DMG, signs both with your
-Developer ID and, if you give it a notarytool profile, notarizes and staples the DMG.
-It also signs the update archive with the updater key and writes the `latest.json` that installed
-copies read from the latest GitHub release. Credentials stay in your keychain or home folder;
-nothing secret goes in the repo.
+`npm run dmg` (in `desktop/`) builds the app and the DMG, signs both with the Developer ID in your
+keychain, signs the update archive and writes `latest.json`. It also notarizes and staples the DMG
+with the notarytool profile `keyfold-notary` (`KEYFOLD_NOTARY_PROFILE=` skips it). Credentials stay
+in your keychain or home folder, never in the repo.
 
 ```sh
 xcrun notarytool store-credentials keyfold-notary --apple-id you@example.com --team-id TEAMID   # once
 npx tauri signer generate --ci -w ~/.tauri/keyfold-updater.key                                  # once; back it up
-APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
-KEYFOLD_NOTARY_PROFILE=keyfold-notary \
-KEYFOLD_RELEASE_NOTES=notes.txt \
-./scripts/release-macos.sh
+KEYFOLD_RELEASE_NOTES=notes.txt npm run dmg
 ```
 
-Bump `version` in `src-tauri/tauri.conf.json` first, then publish with the `gh release create`
-command the script prints. The updater only accepts archives signed with the key whose public
-half is in `tauri.conf.json`: lose the private key and installed copies stop updating.
-
-<p align="center">
-  <img src="docs/images/dmg-window.png" width="560" alt="Keyfold installer window: drag the app to Applications">
-</p>
+Bump `version` in `src-tauri/tauri.conf.json` first, then publish with the `gh release create` command
+the script prints. Lose the updater key and installed copies stop updating.
 
 ## Connect your agent
 
-Keyfold speaks [MCP](https://modelcontextprotocol.io) over stdio, so any MCP client can use it.
-One command registers it (or **Connect agent** in the menu bar). It writes the path to the binary
-and nothing else, and running it twice is harmless:
+Keyfold speaks [MCP](https://modelcontextprotocol.io) over stdio. One command registers it
+(or **Connect agent** in the menu bar):
 
 ```sh
 keyfold connect claude    # runs `claude mcp add --scope user keyfold ...`
@@ -176,8 +150,7 @@ keyfold connect codex     # adds [mcp_servers.keyfold] to ~/.codex/config.toml
 keyfold connect cursor    # adds "keyfold" to ~/.cursor/mcp.json
 ```
 
-Restart the agent afterwards. Your agent can run this itself too: it is a setup step, it never
-touches a key. To do it by hand instead:
+Restart the agent afterwards. By hand:
 
 **Claude Code**
 
@@ -201,7 +174,7 @@ args = ["mcp"]
 
 ### MCP tools
 
-None of them returns a value. They return the name, the reference, whether a value is stored, and the projects.
+None of them returns a value.
 
 | Tool | What it does |
 |---|---|
@@ -233,19 +206,13 @@ None of them returns a value. They return the name, the reference, whether a val
 | `keyfold mcp` | MCP server over stdio |
 | `keyfold connect claude\|codex\|cursor` | Register Keyfold as the agent's MCP server |
 
-To tie a folder to its project, put a `.keyfold` file at the repo root with the project name on one line
-(lines starting with `#` are comments). `keyfold run -- npm run dev` then works anywhere inside it.
-The file holds a name only, never a value, so it can be committed and the whole team shares it.
-If the project does not exist in your Keyfold, `run` warns and starts the command without keys.
-
-To link a folder without adding a file to the repo, run `keyfold link --project P` inside it (or let
-your agent call `link_folder`). The link lives in your `registry.json` and only works on your machine.
-Going up from the current folder, the nearest `.keyfold` or link wins; at the same level, the file wins.
-In the app, choosing a project in the filter shows its linked folders, and you can unlink them there.
+A `.keyfold` file at the repo root with the project name ties the folder to it, so `keyfold run -- npm run dev`
+works anywhere inside. It holds only a name, so commit it. `keyfold link --project P` does the same on your
+machine only, without a file. The nearest one wins; at the same level, the file.
 
 ## Security
 
-What Keyfold guarantees, and what it doesn't. The full review is in [SECURITY.md](SECURITY.md).
+Full review in [SECURITY.md](SECURITY.md).
 
 | Keyfold protects against | Keyfold does **not** protect against |
 |---|---|
@@ -255,10 +222,8 @@ What Keyfold guarantees, and what it doesn't. The full review is in [SECURITY.md
 | The key lingering in your clipboard after you paste it (macOS) | Clipboard history apps that already recorded it |
 | Typing meant for another app being saved by accident (Enter only saves pasted text) | A tricked agent asking you for a key you didn't request (the window warns you; cancel it) |
 
-Where things are stored:
-
-- **Values:** the OS credential store (macOS login Keychain, Windows Credential Manager), encrypted at rest and tied to your user account.
-- **Names, projects and linked folders:** `registry.json` in your user data folder, readable only by you. It never contains values.
+- **Values:** the OS credential store (macOS Keychain, Windows Credential Manager).
+- **Names, projects and linked folders:** `registry.json` in your user data folder. Never values.
 
 ## Project layout
 
@@ -280,4 +245,4 @@ cargo test --workspace      # core + CLI/MCP contract against the real credentia
 npx tauri dev               # run the app with hot reload
 ```
 
-The contract tests drive the real binary the way an agent would (CLI and MCP) and fail if any output contains a stored value.
+The contract tests drive the real binary like an agent and fail if any output contains a stored value.
