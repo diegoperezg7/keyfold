@@ -126,13 +126,14 @@ verifies, installs and restarts. Builds from source do not; pull and build again
 ### Signed DMG (maintainers)
 
 `npm run dmg` (in `desktop/`) builds the app and the DMG, signs both with the Developer ID in your
-keychain, signs the update archive and writes `latest.json`. With a notarytool profile it also
-notarizes and staples the DMG. Credentials stay in your keychain or home folder, never in the repo.
+keychain, signs the update archive and writes `latest.json`. It also notarizes and staples the DMG
+with the notarytool profile `keyfold-notary` (`KEYFOLD_NOTARY_PROFILE=` skips it). Credentials stay
+in your keychain or home folder, never in the repo.
 
 ```sh
 xcrun notarytool store-credentials keyfold-notary --apple-id you@example.com --team-id TEAMID   # once
 npx tauri signer generate --ci -w ~/.tauri/keyfold-updater.key                                  # once; back it up
-KEYFOLD_NOTARY_PROFILE=keyfold-notary KEYFOLD_RELEASE_NOTES=notes.txt npm run dmg
+KEYFOLD_RELEASE_NOTES=notes.txt npm run dmg
 ```
 
 Bump `version` in `src-tauri/tauri.conf.json` first, then publish with the `gh release create` command
