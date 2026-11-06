@@ -1,16 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import type { SlotInfo } from './api'
+import type { EnvCandidate, SlotInfo } from './api'
 import {
   counts,
   isPublicKey,
   parseRecipients,
   downloadPercent,
+  envGroups,
+  envPicks,
+  initialEnvPicks,
   isValidKeyName,
   isValidProject,
   knownProjects,
   looksLikePlaceholder,
   NO_PROJECT,
   normalizeKeyName,
+  toggleEnvPick,
   visibleKeys,
 } from './logic'
 
@@ -126,5 +130,53 @@ describe('share recipients', () => {
     expect(isPublicKey('age1short')).toBe(false)
     expect(isPublicKey('AGE-SECRET-KEY-1QQQ')).toBe(false)
     expect(isPublicKey(KEY.toUpperCase())).toBe(false)
+  })
+})
+
+describe('.env import', () => {
+  const row = (name: string, file: string, project: string | null, extra: Partial<EnvCandidate> = {}): EnvCandidate => ({
+    name,
+    file,
+    project,
+    valueGroup: 0,
+    conflict: false,
+    exists: false,
+    placeholder: false,
+    validName: true,
+    suggested: false,
+    ...extra,
+  })
+  const rows = [
+    row('API_KEY', '/p/web/.env', 'web', { suggested: true }),
+    row('TOKEN', '/p/web/.env', 'web', { conflict: true, suggested: true }),
+    row('TOKEN', '/p/api/.env', 'api', { conflict: true, valueGroup: 1 }),
+    row('lower', '/p/api/.env', 'api', { validName: false }),
+    row('PORT', '/p/loose/.env', null),
+  ]
+
+  it('opens with the suggested rows ticked', () => {
+    expect([...initialEnvPicks(rows)]).toEqual([0, 1])
+  })
+
+  it('ticking another value of a name unticks the first, and invalid names stay unticked', () => {
+    const picks = toggleEnvPick(rows, initialEnvPicks(rows), 2)
+    expect([...picks].sort()).toEqual([0, 2])
+    expect(toggleEnvPick(rows, picks, 3)).toEqual(picks)
+    expect([...toggleEnvPick(rows, picks, 0)]).toEqual([2])
+  })
+
+  it('sends file and name of the ticked rows only', () => {
+    expect(envPicks(rows, new Set([2, 0]))).toEqual([
+      { file: '/p/web/.env', name: 'API_KEY' },
+      { file: '/p/api/.env', name: 'TOKEN' },
+    ])
+  })
+
+  it('groups by project, rows without one last', () => {
+    expect(envGroups(rows)).toEqual([
+      { project: 'api', rows: [2, 3] },
+      { project: 'web', rows: [0, 1] },
+      { project: null, rows: [4] },
+    ])
   })
 })

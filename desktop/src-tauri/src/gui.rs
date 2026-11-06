@@ -8,10 +8,11 @@
 use crate::prompt::PromptRequest;
 use crate::tray;
 use crate::unlock::{self, SessionUnlock};
-use keyfold_core::{l10n, Config, Keyfold, SlotInfo};
+use keyfold_core::{l10n, Config, EnvPick, EnvScan, Keyfold, SlotInfo};
 use serde::Serialize;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 pub enum Mode {
@@ -27,6 +28,8 @@ struct AppState {
     unlock: SessionUnlock,
     /// The newer release found by `check_update`, ready for `install_update`.
     update: Mutex<Option<Update>>,
+    /// The `.env` files of the last scan: `import_env` reads only these.
+    env_files: Mutex<Vec<String>>,
 }
 
 impl AppState {
@@ -231,6 +234,40 @@ async fn share_keys(window: WebviewWindow, state: State<'_, AppState>, names: Ve
     package.map_err(|e| e.to_string())
 }
 
+/// Asks for folders with the system picker and lists the variables of the `.env` files in
+/// them, without values. The webview never passes a path, so it cannot point the scan
+/// anywhere the user did not choose. None when the picker is cancelled.
+#[tauri::command]
+async fn scan_env(window: WebviewWindow, state: State<'_, AppState>) -> Result<Option<EnvScan>, String> {
+    if state.prompt.is_some() || window.label() != "main" {
+        return Err("not available in this window".into());
+    }
+    let picked = window
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .set_title(l10n::t("Carpetas con proyectos", "Folders with projects"))
+        .blocking_pick_folders();
+    let Some(picked) = picked else { return Ok(None) };
+    let folders: Vec<_> = picked.into_iter().filter_map(|f| f.into_path().ok()).collect();
+    let scan = state.keyfold().scan_env(&folders).map_err(|e| e.to_string())?;
+    *state.env_files.lock().map_err(|e| e.to_string())? = scan.files.clone();
+    Ok(Some(scan))
+}
+
+/// Stores the ticked variables, read again from the files of the last scan. Returns names and
+/// projects only.
+#[tauri::command]
+fn import_env(app: AppHandle, window: WebviewWindow, state: State<AppState>, picks: Vec<EnvPick>) -> Result<Vec<SlotInfo>, String> {
+    if state.prompt.is_some() || window.label() != "main" {
+        return Err("not available in this window".into());
+    }
+    let files = state.env_files.lock().map_err(|e| e.to_string())?.clone();
+    let imported = state.keyfold().import_env(&files, &picks).map_err(|e| e.to_string())?;
+    let _ = app.emit("keys-changed", ());
+    Ok(imported)
+}
+
 /// Opens a package made for this computer and stores its keys. Returns names and projects only.
 #[tauri::command]
 fn import_package(app: AppHandle, state: State<AppState>, package: String) -> Result<Vec<SlotInfo>, String> {
@@ -353,7 +390,14 @@ pub fn run(config: Config, mode: Mode) -> i32 {
     };
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(AppState { config, prompt: prompt.clone(), unlock: SessionUnlock::default(), update: Mutex::new(None) })
+        .plugin(tauri_plugin_dialog::init())
+        .manage(AppState {
+            config,
+            prompt: prompt.clone(),
+            unlock: SessionUnlock::default(),
+            update: Mutex::new(None),
+            env_files: Mutex::new(Vec::new()),
+        })
         .invoke_handler(tauri::generate_handler![
             list_keys,
             create_key,
@@ -368,6 +412,8 @@ pub fn run(config: Config, mode: Mode) -> i32 {
             public_key,
             share_keys,
             import_package,
+            scan_env,
+            import_env,
             finish_prompt,
             open_prompt,
             check_update,

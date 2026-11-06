@@ -1116,6 +1116,61 @@ input {
   gap: 8px;
 }
 
+/* Import from .env: a wider dialog with a scrolling list of variables. */
+.dialog-wide {
+  width: min(620px, calc(100% - 32px));
+}
+
+.env-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+}
+
+.env-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.env-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.env-row input {
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.env-row code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.env-row-off {
+  opacity: 0.5;
+}
+
+/* After an import: the same self-drawing mark as the paste window, then the names. */
+.env-done {
+  align-items: center;
+  text-align: center;
+}
+
+.env-done .dialog-actions {
+  justify-content: center;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
 /* Paste window: its content also runs under the title bar on macOS. */
 .prompt {
   display: flex;

@@ -2,22 +2,13 @@ import { Lock, ShieldAlert, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api } from '../api'
 import { Logo } from '../components/Logo'
+import { SuccessMark } from '../components/SuccessMark'
 import { useT } from '../i18n'
 import { looksLikePlaceholder } from '../logic'
 import { usePrompt } from '../stores/prompt'
 
 /** How long the "saved" confirmation stays before the window closes (it fades out at the end). */
 const SUCCESS_MS = 1300
-
-/** Circle and check that draw themselves (see .success-mark in styles.css). */
-function SuccessMark() {
-  return (
-    <svg className="success-mark" width="64" height="64" viewBox="0 0 64 64" aria-hidden>
-      <circle className="success-ring" cx="32" cy="32" r="29" />
-      <path className="success-check" d="M20 33 l8 8 l16 -17" />
-    </svg>
-  )
-}
 
 /** The paste window. A password field only: no reveal toggle, no copy. */
 export function PromptView({ name, project }: { name: string; project?: string | null }) {

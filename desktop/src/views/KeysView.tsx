@@ -1,11 +1,12 @@
 import { listen } from '@tauri-apps/api/event'
-import { AlertCircle, ArrowDown, ArrowUp, CheckCircle2, Eye, FolderPlus, KeyRound, Plus, RefreshCw, RotateCw, Search, Share2, ShieldCheck, Trash2, X } from 'lucide-react'
+import { AlertCircle, ArrowDown, ArrowUp, CheckCircle2, Eye, FolderPlus, FolderSearch, KeyRound, Plus, RefreshCw, RotateCw, Search, Share2, ShieldCheck, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { api, boot, type Notice, type SlotInfo } from '../api'
 import { AssignDialog } from '../components/AssignDialog'
 import { DeleteDialog } from '../components/DeleteDialog'
 import { Logo } from '../components/Logo'
 import { NewKeyDialog } from '../components/NewKeyDialog'
+import { ImportEnvDialog } from '../components/ImportEnvDialog'
 import { ShareDialog } from '../components/ShareDialog'
 import { ProjectFolders } from '../components/ProjectFolders'
 import { ProjectSelect } from '../components/ProjectSelect'
@@ -33,6 +34,7 @@ export function KeysView() {
   const [deleting, setDeleting] = useState<string | null>(null)
   /** Keys to share: one from its row, or [] for every key with a value. */
   const [sharing, setSharing] = useState<string[] | null>(null)
+  const [importingEnv, setImportingEnv] = useState(false)
   const [creating, setCreating] = useState(boot.action === 'new')
   const [notice, setNotice] = useState<Notice | null>(boot.notice ?? null)
 
@@ -100,6 +102,9 @@ export function KeysView() {
         <div className="topbar-actions">
           <button className="btn btn-icon btn-ghost" onClick={() => load()} title={t('refresh')} aria-label={t('refresh')}>
             <RefreshCw size={16} aria-hidden />
+          </button>
+          <button className="btn btn-icon btn-ghost" onClick={() => setImportingEnv(true)} title={t('envImport')} aria-label={t('envImport')}>
+            <FolderSearch size={16} aria-hidden />
           </button>
           <button className="btn btn-icon btn-ghost" onClick={() => setSharing([])} title={t('shareTitle')} aria-label={t('shareTitle')}>
             <Share2 size={16} aria-hidden />
@@ -229,6 +234,7 @@ export function KeysView() {
       {assigning && <AssignDialog slot={assigning} onClose={() => setAssigning(null)} />}
       {creating && <NewKeyDialog onClose={() => setCreating(false)} />}
       {sharing && <ShareDialog names={sharing} onClose={() => setSharing(null)} />}
+      {importingEnv && <ImportEnvDialog onClose={() => setImportingEnv(false)} />}
       {revealing && <RevealDialog name={revealing} onClose={closeReveal} />}
       {deleting && (
         <DeleteDialog
