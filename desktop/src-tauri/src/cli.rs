@@ -158,6 +158,10 @@ fn share(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
     if args.to.is_empty() || (all == !args.positionals.is_empty()) {
         return Ok(usage());
     }
+    if !unlock::AVAILABLE {
+        eprintln!("{}", unlock::unavailable_message());
+        return Ok(1);
+    }
     let what = if all { t("todas tus claves", "all your keys") } else { args.positionals.join(", ") };
     let reason = t(&format!("compartir {what} cifradas"), &format!("share {what}, encrypted"));
     if !unlock::authenticate(&reason) {

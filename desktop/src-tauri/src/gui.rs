@@ -204,6 +204,9 @@ async fn reveal_value(window: WebviewWindow, state: State<'_, AppState>, name: S
     if state.prompt.is_some() || window.label() != "main" {
         return Err("not available in this window".into());
     }
+    if !unlock::AVAILABLE {
+        return Err(unlock::unavailable_message());
+    }
     let reason = l10n::t(&format!("mostrar el valor de {name}"), &format!("show the value of {name}"));
     state.unlock.ensure(unlock::is_today, || unlock::authenticate(&reason)).map_err(|_| "locked".to_string())?;
     window.set_content_protected(true).map_err(|e| e.to_string())?;
@@ -223,6 +226,9 @@ fn public_key(state: State<AppState>) -> Result<String, String> {
 async fn share_keys(window: WebviewWindow, state: State<'_, AppState>, names: Vec<String>, recipients: Vec<String>) -> Result<String, String> {
     if state.prompt.is_some() || window.label() != "main" {
         return Err("not available in this window".into());
+    }
+    if !unlock::AVAILABLE {
+        return Err(unlock::unavailable_message());
     }
     let what = if names.is_empty() { l10n::t("todas tus claves", "all your keys") } else { names.join(", ") };
     let reason = l10n::t(&format!("compartir {what} cifradas"), &format!("share {what}, encrypted"));
