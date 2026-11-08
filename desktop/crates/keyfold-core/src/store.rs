@@ -20,8 +20,9 @@ impl fmt::Display for StoreError {
 pub trait SecretStore: Send + Sync {
     fn set(&self, name: &str, value: &str) -> Result<(), StoreError>;
     fn get(&self, name: &str) -> Result<Option<String>, StoreError>;
-    /// Must not decrypt the value (no OS prompt).
-    fn has_value(&self, name: &str) -> bool;
+    /// Must not decrypt the value (no OS prompt). An error from the store is an error, never
+    /// "no value": callers like `generate` would otherwise overwrite a value they could not see.
+    fn has_value(&self, name: &str) -> Result<bool, StoreError>;
     fn delete(&self, name: &str) -> Result<(), StoreError>;
 }
 
@@ -52,8 +53,8 @@ impl SecretStore for MemoryStore {
     fn get(&self, name: &str) -> Result<Option<String>, StoreError> {
         Ok(self.values.lock().unwrap().get(name).cloned())
     }
-    fn has_value(&self, name: &str) -> bool {
-        self.values.lock().unwrap().contains_key(name)
+    fn has_value(&self, name: &str) -> Result<bool, StoreError> {
+        Ok(self.values.lock().unwrap().contains_key(name))
     }
     fn delete(&self, name: &str) -> Result<(), StoreError> {
         self.values.lock().unwrap().remove(name);
@@ -91,16 +92,19 @@ mod mac {
             }
         }
 
-        fn has_value(&self, name: &str) -> bool {
-            ItemSearchOptions::new()
+        fn has_value(&self, name: &str) -> Result<bool, StoreError> {
+            match ItemSearchOptions::new()
                 .class(ItemClass::generic_password())
                 .service(&self.service)
                 .account(name)
                 .load_attributes(true)
                 .limit(Limit::Max(1))
                 .search()
-                .map(|items| !items.is_empty())
-                .unwrap_or(false)
+            {
+                Ok(items) => Ok(!items.is_empty()),
+                Err(e) if e.code() == ERR_NOT_FOUND => Ok(false),
+                Err(e) => Err(error(e)),
+            }
         }
 
         fn delete(&self, name: &str) -> Result<(), StoreError> {
@@ -194,14 +198,14 @@ mod win {
             Ok(Some(value))
         }
 
-        fn has_value(&self, name: &str) -> bool {
+        fn has_value(&self, name: &str) -> Result<bool, StoreError> {
             let target = self.target(name);
             let mut credential: *mut CREDENTIALW = null_mut();
             if unsafe { CredReadW(target.as_ptr(), CRED_TYPE_GENERIC, 0, &mut credential) } == 0 {
-                return false;
+                return if unsafe { GetLastError() } == ERROR_NOT_FOUND { Ok(false) } else { Err(last_error()) };
             }
             unsafe { CredFree(credential as *const _) };
-            true
+            Ok(true)
         }
 
         fn delete(&self, name: &str) -> Result<(), StoreError> {
@@ -224,14 +228,14 @@ mod tests {
     fn system_store_round_trip() {
         let service = format!("com.diego.llavero.tests.core-{}", std::process::id());
         let store = system_store(&service);
-        assert!(!store.has_value("CORE_TEST_KEY"));
+        assert!(!store.has_value("CORE_TEST_KEY").unwrap());
         assert_eq!(store.get("CORE_TEST_KEY").unwrap(), None);
         store.set("CORE_TEST_KEY", "first").unwrap();
         store.set("CORE_TEST_KEY", "second").unwrap(); // update path
-        assert!(store.has_value("CORE_TEST_KEY"));
+        assert!(store.has_value("CORE_TEST_KEY").unwrap());
         assert_eq!(store.get("CORE_TEST_KEY").unwrap().as_deref(), Some("second"));
         store.delete("CORE_TEST_KEY").unwrap();
         store.delete("CORE_TEST_KEY").unwrap(); // deleting a missing key is fine
-        assert!(!store.has_value("CORE_TEST_KEY"));
+        assert!(!store.has_value("CORE_TEST_KEY").unwrap());
     }
 }

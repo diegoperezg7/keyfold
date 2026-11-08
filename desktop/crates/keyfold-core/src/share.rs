@@ -149,7 +149,7 @@ mod tests {
         fn get(&self, n: &str) -> Result<Option<String>, crate::store::StoreError> {
             self.0.get(n)
         }
-        fn has_value(&self, n: &str) -> bool {
+        fn has_value(&self, n: &str) -> Result<bool, crate::store::StoreError> {
             self.0.has_value(n)
         }
         fn delete(&self, n: &str) -> Result<(), crate::store::StoreError> {
