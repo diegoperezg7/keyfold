@@ -450,3 +450,63 @@ fn run_forwards_signals_to_the_child() {
         assert_eq!(child.wait().unwrap().code(), Some(code), "SIG{signal} did not reach the child");
     }
 }
+
+/// A mistyped or misplaced option is refused (exit 64) instead of silently ignored.
+#[test]
+fn unknown_options_are_refused() {
+    let mut s = Sandbox::new("options");
+    let typo = s.cli(&["create", "EXA_API_KEY", "--projet", "demo", "--no-prompt"], None);
+    assert_eq!(typo.status, 64);
+    assert!(typo.err.contains("--projet") && typo.err.contains("--project"), "{}", typo.err);
+    assert!(!s.registry().contains("EXA_API_KEY"), "nothing may run after a refused option");
+    assert_eq!(s.cli(&["delete", "EXA_API_KEY", "--force"], None).status, 64);
+    assert_eq!(s.cli(&["list", "--all"], None).status, 64);
+    // Options after `--` belong to the command that run starts.
+    #[cfg(unix)]
+    assert_eq!(s.cli(&["run", "--project", "none", "--", "/bin/sh", "-c", "exit 0", "--whatever"], None).status, 0);
+}
+
+/// `set --stdin` drops the one line ending `echo` adds, and keeps everything else.
+#[cfg(unix)]
+#[test]
+fn set_from_stdin_keeps_inner_whitespace() {
+    let mut s = Sandbox::new("stdin");
+    s.cli(&["create", "EXA_API_KEY", "--project", "demo", "--no-prompt"], None);
+    let value = format!("  {}\nsecond line ", secret("exa"));
+    assert_eq!(s.cli(&["set", "EXA_API_KEY", "--stdin"], Some(&format!("{value}\r\n"))).status, 0);
+    assert_eq!(stored_value(&mut s, "EXA_API_KEY", "demo"), value);
+    s.assert_never_printed(&value);
+}
+
+/// Responses from the client are ignored; valid JSON that is not a request gets -32600 and
+/// broken JSON -32700; link_folder only takes absolute paths.
+#[test]
+fn mcp_rejects_invalid_messages_precisely() {
+    let mut s = Sandbox::new("jsonrpc");
+    let mut input = String::new();
+    for line in [
+        r#"{"jsonrpc":"2.0","id":99,"result":{}}"#,
+        r#"{"jsonrpc":"2.0","id":98,"error":{"code":1,"message":"x"}}"#,
+        r#"{"jsonrpc":"2.0","id":5}"#,
+        r#"{"jsonrpc":"2.0","id":6,"method":42}"#,
+        r#"[1,2]"#,
+        r#"{not json"#,
+        r#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"link_folder","arguments":{"path":"relative/dir","project":"demo"}}}"#,
+    ] {
+        input.push_str(line);
+        input.push('\n');
+    }
+    let result = s.cli(&["mcp"], Some(&input));
+    assert_eq!(result.status, 0, "{}", result.err);
+    let replies: Vec<Value> = result.out.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert_eq!(replies.len(), 5, "responses must get no reply: {replies:?}");
+    assert_eq!(replies[0]["error"]["code"], json!(-32600));
+    assert_eq!(replies[0]["id"], json!(5));
+    assert_eq!(replies[1]["error"]["code"], json!(-32600));
+    assert_eq!(replies[1]["id"], json!(6));
+    assert_eq!(replies[2]["error"]["code"], json!(-32600));
+    assert_eq!(replies[3]["error"]["code"], json!(-32700));
+    assert_eq!(replies[4]["result"]["isError"], json!(true));
+    assert!(replies[4]["result"]["structuredContent"]["error"].as_str().unwrap().contains("absolute"));
+    assert!(!s.registry().contains("folders"));
+}
