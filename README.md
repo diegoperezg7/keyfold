@@ -234,9 +234,11 @@ desktop/                    the app (Tauri 2)
   crates/keyfold-core/      storage, registry, masking: plain Rust, no UI
   src-tauri/                one binary: app + CLI + MCP server
   src/                      UI: React, TypeScript, Zustand
-Sources/, Tests/            the original native macOS prototype (Swift)
-docs/                       images and the Swift prototype notes
+docs/                       images
 ```
+
+The first version was a native macOS prototype in Swift. It is no longer in the tree; the
+`swift-prototype` tag keeps it.
 
 ## Development
 
