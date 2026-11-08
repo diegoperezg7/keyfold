@@ -373,7 +373,6 @@ fn canonical(folder: &Path) -> Result<String, KeyfoldError> {
     Ok(std::fs::canonicalize(folder)?.to_string_lossy().into_owned())
 }
 
-/// `^[A-Z_][A-Z0-9_]*$`
 /// Generated secrets: 48 letters and digits (~285 bits) unless asked otherwise.
 pub const GENERATE_DEFAULT: usize = 48;
 pub const GENERATE_MIN: usize = 16;
@@ -398,6 +397,7 @@ fn random_secret(length: usize) -> Result<String, KeyfoldError> {
     Ok(out)
 }
 
+/// `^[A-Z_][A-Z0-9_]*$`
 pub(crate) fn validate_name(name: &str) -> Result<(), KeyfoldError> {
     let mut chars = name.chars();
     let ok = matches!(chars.next(), Some(c) if c.is_ascii_uppercase() || c == '_')
