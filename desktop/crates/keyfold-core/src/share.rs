@@ -6,7 +6,7 @@
 //! encrypted to one or more public keys: names, projects and values inside, readable only
 //! by the holders of those identities. Values are in clear only in memory.
 
-use crate::keyfold::{Keyfold, KeyfoldError, SlotInfo};
+use crate::keyfold::{validate_name, validate_project, Keyfold, KeyfoldError, SlotInfo};
 use age::armor::{ArmoredReader, ArmoredWriter, Format};
 use age::secrecy::ExposeSecret;
 use age::x25519;
@@ -74,6 +74,16 @@ impl Keyfold {
         let package: Package = serde_json::from_slice(&plain).map_err(|_| KeyfoldError::InvalidPackage)?;
         if package.format != FORMAT {
             return Err(KeyfoldError::InvalidPackage);
+        }
+        // Check every key before storing any, so a bad entry never leaves half a package behind.
+        for key in &package.keys {
+            validate_name(&key.name)?;
+            if key.value.is_empty() {
+                return Err(KeyfoldError::EmptyValue);
+            }
+            for project in &key.projects {
+                validate_project(project)?;
+            }
         }
         let mut imported = Vec::new();
         for key in package.keys {
@@ -200,6 +210,27 @@ mod tests {
         for d in [a_dir, b_dir, e_dir, l_dir] {
             let _ = std::fs::remove_dir_all(d);
         }
+    }
+
+    #[test]
+    fn a_package_with_one_bad_entry_imports_nothing() {
+        let (bob, bob_store, b_dir) = device("bob-bad");
+        let recipient: age::x25519::Recipient = bob.public_key().unwrap().parse().unwrap();
+        for (name, project) in [("bad name", "shop"), ("GOOD_TWO", "bad/project")] {
+            let plain = serde_json::to_vec(&super::Package {
+                format: super::FORMAT.into(),
+                keys: vec![
+                    super::SharedKey { name: "GOOD_KEY".into(), value: VALUE.into(), projects: vec!["shop".into()] },
+                    super::SharedKey { name: name.into(), value: VALUE.into(), projects: vec![project.into()] },
+                ],
+            })
+            .unwrap();
+            let package = super::encrypt(&plain, &[recipient.clone()]).unwrap();
+            assert!(matches!(bob.import(&package), Err(KeyfoldError::InvalidName(_) | KeyfoldError::InvalidProject(_))));
+            assert!(bob.list(None).unwrap().is_empty(), "nothing may be stored from a bad package");
+            assert_eq!(bob_store.get("GOOD_KEY").unwrap(), None);
+        }
+        let _ = std::fs::remove_dir_all(b_dir);
     }
 
     #[test]
