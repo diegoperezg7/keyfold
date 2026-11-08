@@ -402,3 +402,51 @@ fn concurrent_processes_never_lose_a_key() {
     assert_eq!(registry["secrets"].as_object().unwrap().len(), 12, "{registry}");
     assert_eq!(registry["projects"]["race"].as_array().unwrap().len(), 12, "{registry}");
 }
+
+/// `keyfold run` returns 128 + signal when a signal ends the child, like a shell.
+#[cfg(unix)]
+#[test]
+fn run_reports_a_child_killed_by_a_signal() {
+    let mut s = Sandbox::new("signal-exit");
+    let result = s.cli(&["run", "--project", "none", "--", "/bin/sh", "-c", "kill -TERM $$"], None);
+    assert_eq!(result.status, 128 + 15, "{}", result.err);
+}
+
+/// A background process that keeps the output pipes open must not keep `run` waiting.
+#[cfg(unix)]
+#[test]
+fn run_does_not_wait_for_a_grandchild_holding_the_pipes() {
+    let mut s = Sandbox::new("grandchild");
+    let started = std::time::Instant::now();
+    let result = s.cli(&["run", "--project", "none", "--", "/bin/sh", "-c", "sleep 8 & echo hi; exit 3"], None);
+    assert_eq!(result.status, 3, "{}", result.err);
+    assert!(result.out.contains("hi"), "{}", result.out);
+    assert!(started.elapsed() < std::time::Duration::from_secs(6), "run waited for the grandchild: {:?}", started.elapsed());
+}
+
+/// SIGTERM, SIGINT and SIGHUP sent to `keyfold run` reach the child, and `run` returns the
+/// child's own exit code.
+#[cfg(unix)]
+#[test]
+fn run_forwards_signals_to_the_child() {
+    use std::io::{BufRead, BufReader};
+    let s = Sandbox::new("signal-forward");
+    for (signal, code) in [("TERM", 7), ("INT", 8), ("HUP", 9)] {
+        let script = format!("trap 'exit {code}' {signal}; echo ready; while true; do sleep 0.1; done");
+        let mut child = Command::new(env!("CARGO_BIN_EXE_keyfold"))
+            .args(["run", "--project", "none", "--", "/bin/sh", "-c", &script])
+            .env("KEYFOLD_HOME", &s.home)
+            .env("KEYFOLD_SERVICE", &s.service)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn keyfold");
+        let mut line = String::new();
+        BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
+        assert_eq!(line.trim(), "ready");
+        let sent = Command::new("/bin/kill").args([&format!("-{signal}"), &child.id().to_string()]).status().unwrap();
+        assert!(sent.success());
+        assert_eq!(child.wait().unwrap().code(), Some(code), "SIG{signal} did not reach the child");
+    }
+}

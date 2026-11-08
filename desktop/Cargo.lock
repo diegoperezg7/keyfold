@@ -2156,6 +2156,7 @@ version = "0.4.0"
 dependencies = [
  "block2",
  "keyfold-core",
+ "libc",
  "objc2",
  "objc2-foundation",
  "objc2-local-authentication",

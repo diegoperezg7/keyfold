@@ -382,8 +382,12 @@ fn run_command(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
         child.env(name, value);
     }
     let mut child = child.stdin(Stdio::inherit()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    #[cfg(unix)]
+    signals::forward_to(child.id());
 
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
     let pump = |mut source: Box<dyn Read + Send>, to_stdout: bool, secrets: Vec<(String, String)>| {
+        let done = done_tx.clone();
         std::thread::spawn(move || {
             let mut redactor = Redactor::new(&secrets);
             let mut chunk = [0u8; 8192];
@@ -395,19 +399,84 @@ fn run_command(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
                     let _ = std::io::stderr().lock().write_all(bytes);
                 }
             };
-            while let Ok(n) = source.read(&mut chunk) {
-                if n == 0 {
-                    break;
+            loop {
+                match source.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => write(&redactor.feed(&chunk[..n])),
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(_) => break,
                 }
-                write(&redactor.feed(&chunk[..n]));
             }
             write(&redactor.finish());
+            let _ = done.send(());
         })
     };
-    let out = pump(Box::new(child.stdout.take().expect("piped")), true, secrets.clone());
-    let err = pump(Box::new(child.stderr.take().expect("piped")), false, secrets);
+    let _out = pump(Box::new(child.stdout.take().expect("piped")), true, secrets.clone());
+    let _err = pump(Box::new(child.stderr.take().expect("piped")), false, secrets);
+    drop(done_tx);
     let status = child.wait()?;
-    let _ = out.join();
-    let _ = err.join();
-    Ok(status.code().unwrap_or(1))
+    #[cfg(unix)]
+    signals::forward_to(0);
+    // A background process the child started may keep the pipes open long after it exits:
+    // give the output a moment to drain, then return instead of waiting for it.
+    let deadline = std::time::Instant::now() + OUTPUT_DRAIN;
+    for _ in 0..2 {
+        if done_rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now())).is_err() {
+            break;
+        }
+    }
+    Ok(exit_code(&status))
+}
+
+/// How long `run` waits for the child's output after the child exits.
+const OUTPUT_DRAIN: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// The child's exit code, or 128 + signal number when a signal ended it (shell convention).
+fn exit_code(status: &std::process::ExitStatus) -> i32 {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return 128 + signal;
+        }
+    }
+    status.code().unwrap_or(1)
+}
+
+/// SIGINT, SIGTERM and SIGHUP sent to `keyfold run` go on to the child, so stopping the
+/// wrapper (an agent's timeout, a closed terminal, `kill`) stops the program it runs, and
+/// `run` returns once the child has handled them.
+#[cfg(unix)]
+mod signals {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    use std::sync::Once;
+
+    static CHILD: AtomicI32 = AtomicI32::new(0);
+
+    extern "C" fn forward(signal: libc::c_int) {
+        // Only async-signal-safe calls here: an atomic load and kill(2).
+        let pid = CHILD.load(Ordering::SeqCst);
+        if pid > 0 {
+            unsafe { libc::kill(pid, signal) };
+        }
+    }
+
+    /// Starts forwarding to `pid`; 0 stops it (the signals are then ignored until exit).
+    pub fn forward_to(pid: u32) {
+        static INSTALL: Once = Once::new();
+        CHILD.store(pid as i32, Ordering::SeqCst);
+        INSTALL.call_once(|| {
+            for signal in [libc::SIGINT, libc::SIGTERM, libc::SIGHUP] {
+                // SAFETY: plain sigaction with a handler that only calls async-signal-safe
+                // functions. SA_RESTART keeps the output pumps' reads from failing with EINTR.
+                unsafe {
+                    let mut action: libc::sigaction = std::mem::zeroed();
+                    action.sa_sigaction = forward as *const () as libc::sighandler_t;
+                    action.sa_flags = libc::SA_RESTART;
+                    libc::sigemptyset(&mut action.sa_mask);
+                    libc::sigaction(signal, &action, std::ptr::null_mut());
+                }
+            }
+        });
+    }
 }
