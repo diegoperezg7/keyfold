@@ -133,6 +133,10 @@ const es = {
   envDoneOther: '{n} claves importadas',
   envDoneOk: 'Listo',
   updatedOk: 'Entendido',
+  clearSearch: 'Borrar búsqueda',
+  errNotInWindow: 'No disponible en esta ventana.',
+  errLocked: 'Desbloqueo cancelado.',
+  errNoUpdate: 'No hay ninguna actualización pendiente.',
 } as const
 
 export type Key = keyof typeof es
@@ -267,6 +271,10 @@ const en: Record<Key, string> = {
   envDoneOther: '{n} keys imported',
   envDoneOk: 'Done',
   updatedOk: 'Got it',
+  clearSearch: 'Clear search',
+  errNotInWindow: 'Not available in this window.',
+  errLocked: 'Unlock cancelled.',
+  errNoUpdate: 'There is no pending update.',
 }
 
 const dictionaries: Record<Lang, Record<Key, string>> = { es, en }
@@ -298,4 +306,18 @@ export function translate(lang: Lang, key: Key, vars: Record<string, string | nu
 export function useT() {
   const lang = useI18n((s) => s.lang)
   return (key: Key, vars?: Record<string, string | number>) => translate(lang, key, vars)
+}
+
+/** Errors the Rust commands return as fixed English strings, shown in the current language. */
+const knownErrors: Record<string, Key> = {
+  'not available in this window': 'errNotInWindow',
+  locked: 'errLocked',
+  'no update': 'errNoUpdate',
+}
+
+/** Text for an error from a command: translated when known, as is otherwise. */
+export function errorText(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error)
+  const key = knownErrors[text]
+  return key ? translate(useI18n.getState().lang, key) : text
 }

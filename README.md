@@ -13,7 +13,7 @@ and injects the value only when your app runs.
 [How it works](#how-it-works) · [Connect your agent](#connect-your-agent) · [Commands](#commands) · [Security](#security)
 
 ![macOS](https://img.shields.io/badge/macOS-tested-d6336c)
-![Windows](https://img.shields.io/badge/Windows-builds%20in%20CI-6a6a76)
+![Windows](https://img.shields.io/badge/Windows-experimental-6a6a76)
 ![MCP](https://img.shields.io/badge/MCP-stdio-d6336c)
 ![Local only](https://img.shields.io/badge/cloud-none-6a6a76)
 
@@ -81,19 +81,20 @@ For another Mac of yours, use that Mac's public key with `--all` and move the pa
 - **New key** creates a key by hand, no agent needed.
 - **Import from .env** finds the `.env` files in folders you choose and lists their variable names; the ones
   you tick are stored with their project. Values go straight from the file to the credential store.
-- **Show** reveals a value to you after Touch ID (macOS; Windows does not ask yet, see [SECURITY.md](SECURITY.md)).
+- **Show** reveals a value to you after Touch ID (macOS only: on Windows it is turned off, see [Windows](#windows-experimental)).
   It hides after 30 seconds and is kept out of screenshots. No CLI command or MCP tool can do this.
 
 ## Install
 
 **macOS (Apple Silicon):** download the DMG from the [latest release](https://github.com/diegoperezg7/keyfold/releases/latest)
-(signed and notarized) and drag Keyfold to Applications.
+(signed and notarized) and drag Keyfold to Applications. Releases are built for Apple Silicon only;
+on an Intel Mac, build from source.
 
 <p align="center">
   <img src="docs/images/dmg-window.png" width="560" alt="Keyfold installer window: drag the app to Applications">
 </p>
 
-**Other platforms, or from source.** You need:
+**Intel Macs, Windows, or from source.** You need:
 
 - [Rust](https://rustup.rs) (stable) and Node.js 22+
 - macOS: the Xcode Command Line Tools (`xcode-select --install`)
@@ -120,9 +121,21 @@ keyfold list
 Without it, the MCP server tells your agent the full path. Open the app once (`open -a Keyfold`):
 it stays in the menu bar; quit it from there.
 
+### Windows (experimental)
+
+Keyfold builds and its tests pass on Windows in CI (Credential Manager round trip and the MCP contract),
+but it has not been tried by hand there and it is not at parity with macOS:
+
+- **No Windows Hello yet,** so the two actions that read a value for you are turned off: **Share** and **Show**.
+  Creating, pasting, `keyfold run` and the MCP server work.
+- **A console window** opens with the app (the binary is also the CLI and the MCP server).
+- **No release and no updater:** build it from source, and pull and build again to update.
+
+See [SECURITY.md](SECURITY.md) (M6, M7, L6).
+
 ### Updates
 
-Installed from a release DMG, Keyfold updates itself: **Update** in the keys window downloads,
+Installed from a release DMG (macOS), Keyfold updates itself: **Update** in the keys window downloads,
 verifies, installs and restarts. Builds from source do not; pull and build again.
 
 ### Signed DMG (maintainers)
@@ -138,8 +151,11 @@ npx tauri signer generate --ci -w ~/.tauri/keyfold-updater.key                  
 KEYFOLD_RELEASE_NOTES=notes.txt npm run dmg
 ```
 
-Bump `version` in `src-tauri/tauri.conf.json` first, then publish with the `gh release create` command
-the script prints. Lose the updater key and installed copies stop updating.
+The version lives in `src-tauri/Cargo.toml` (`tauri.conf.json` has none, so Tauri reads it from there);
+`package.json` mirrors it. To release, bump both, commit, tag the commit `vX.Y.Z` and run the script
+from that commit. It refuses to run if the two versions differ (`scripts/check-version.sh`), if HEAD is
+not tagged with that version or if tracked files have local changes. Then publish with the
+`gh release create` command the script prints. Only an Apple Silicon build is published. Lose the updater key and installed copies stop updating.
 
 ## Connect your agent
 
@@ -185,16 +201,19 @@ None of them returns a value.
 | `request_secret_value` | Open the paste window to add or replace the value of an existing key |
 | `assign_secret` | Make an existing key available to a project |
 | `unassign_secret` | Take a key out of a project, e.g. a misspelled one |
-| `link_folder` / `unlink_folder` | Link a local folder to a project on this machine, or remove the link |
+| `generate_secret` | Create a key with a random value generated on this computer (optionally for a project). For your own secrets such as `JWT_SECRET`, not third-party API keys. Never overwrites a value |
+| `link_folder` | Link a local folder to a project on this machine |
+| `unlink_folder` | Remove a folder's link |
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `keyfold` | Open the app |
+| `keyfold` / `keyfold app` | Open the app |
 | `keyfold create NAME [--project P] [--no-prompt]` | Create a slot and open the paste window |
 | `keyfold receive NAME` | Receive mode: create the slot if missing and open the paste window |
 | `keyfold set NAME [--stdin]` | Store or replace a value (window, or stdin) |
+| `keyfold generate NAME [--project P] [--length N]` | Generate a random value (letters and digits, 16-256, default 48) and store it. Never shown; fails if the key already has a value |
 | `keyfold assign NAME --project P` | Make a key available to a project |
 | `keyfold unassign NAME --project P` | Take a key out of a project (the key and its value stay) |
 | `keyfold list [--project P]` | Names, status and projects. Never values |
@@ -211,6 +230,10 @@ None of them returns a value.
 A `.keyfold` file at the repo root with the project name ties the folder to it, so `keyfold run -- npm run dev`
 works anywhere inside. It holds only a name, so commit it. `keyfold link --project P` does the same on your
 machine only, without a file. The nearest one wins; at the same level, the file.
+
+`keyfold run` without `--project`, outside any folder with a `.keyfold` or a link, does not run the command:
+it prints the usage and exits with an error. Running it without keys would fail later in a less obvious way,
+so you (or your agent) find out right away that the folder is not tied to a project.
 
 ## Security
 
@@ -234,9 +257,11 @@ desktop/                    the app (Tauri 2)
   crates/keyfold-core/      storage, registry, masking: plain Rust, no UI
   src-tauri/                one binary: app + CLI + MCP server
   src/                      UI: React, TypeScript, Zustand
-Sources/, Tests/            the original native macOS prototype (Swift)
-docs/                       images and the Swift prototype notes
+docs/                       images
 ```
+
+The first version was a native macOS prototype in Swift. It is no longer in the tree; the
+`swift-prototype` tag keeps it.
 
 ## Development
 
@@ -248,3 +273,7 @@ npx tauri dev               # run the app with hot reload
 ```
 
 The contract tests drive the real binary like an agent and fail if any output contains a stored value.
+
+## License
+
+[MIT](LICENSE)

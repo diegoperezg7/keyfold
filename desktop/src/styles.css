@@ -19,12 +19,16 @@
   --accent-text: #ffffff;
   --accent-soft: rgba(214, 51, 108, 0.1);
   --accent-ring: rgba(214, 51, 108, 0.35);
+  --accent-glow: rgba(214, 51, 108, 0.25);
 
   --ok: #16794a;
   --ok-soft: rgba(22, 163, 90, 0.12);
   --warn: #9a5b00;
   --warn-soft: rgba(245, 158, 11, 0.16);
-  --danger: #b42318;
+  /* Shifted toward orange so it does not read as the raspberry accent; 5.2:1 on white. */
+  --danger: #c2410c;
+  --danger-text: #ffffff;
+  --danger-shade: #000000;
 
   /* Glass */
   --glass: rgba(255, 255, 255, 0.72);
@@ -71,6 +75,7 @@
     --accent-text: #1a0610;
     --accent-soft: rgba(240, 101, 149, 0.15);
     --accent-ring: rgba(240, 101, 149, 0.45);
+    --accent-glow: rgba(240, 101, 149, 0.25);
 
     --ok: #4ade80;
     --ok-soft: rgba(74, 222, 128, 0.12);
@@ -224,11 +229,11 @@ input {
 .btn-danger {
   background: var(--danger);
   border-color: transparent;
-  color: #ffffff;
+  color: var(--danger-text);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--danger) 88%, #000000);
+  background: color-mix(in srgb, var(--danger) 88%, var(--danger-shade));
 }
 
 .btn-sm {
@@ -329,7 +334,7 @@ input {
   flex: none;
   user-select: none;
   -webkit-user-drag: none;
-  filter: drop-shadow(0 2px 4px rgba(214, 51, 108, 0.25));
+  filter: drop-shadow(0 2px 4px var(--accent-glow));
 }
 
 .icon-badge {

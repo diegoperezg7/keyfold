@@ -120,7 +120,7 @@ export function KeysView() {
         <div className={notice.ok ? 'notice' : 'notice notice-error'} role="status">
           {notice.ok ? <CheckCircle2 size={16} aria-hidden /> : <AlertCircle size={16} aria-hidden />}
           <span>{notice.text}</span>
-          <button className="search-clear" onClick={() => setNotice(null)} aria-label="Close">
+          <button className="search-clear" onClick={() => setNotice(null)} aria-label={t('close')}>
             <X size={14} aria-hidden />
           </button>
         </div>
@@ -136,7 +136,7 @@ export function KeysView() {
             onChange={(e) => setSearch(e.target.value)}
           />
           {search && (
-            <button className="search-clear" onClick={() => setSearch('')} aria-label="Clear">
+            <button className="search-clear" onClick={() => setSearch('')} aria-label={t('clearSearch')}>
               <X size={14} aria-hidden />
             </button>
           )}

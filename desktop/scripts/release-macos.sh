@@ -16,11 +16,27 @@
 # KEYFOLD_RELEASE_NOTES   optional. A text file with what changed. Installed copies show it after
 #                         updating; without it they only say the update was installed.
 #
+# Refuses to run unless tracked files have no local changes, src-tauri/Cargo.toml and package.json
+# have the same version (scripts/check-version.sh) and HEAD carries the tag v<that version>.
+# Untracked files (such as the release notes) are allowed.
+#
 # Leaves in target/release/bundle/updater/ what a GitHub release needs: the DMG (new installs),
 # the signed app archive and latest.json (the in-app update reads it from the latest release).
 set -eu
 
 cd "$(dirname "$0")/.."
+
+# A release must be exactly what the tag names: same version everywhere, no local edits.
+VERSION=$(sh scripts/check-version.sh)
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+  echo "The working tree has uncommitted changes. Commit or stash them first." >&2
+  git status --short --untracked-files=no >&2
+  exit 65
+fi
+if ! git tag --points-at HEAD | grep -qx "v$VERSION"; then
+  echo "HEAD is not tagged v$VERSION. Tag the release commit first: git tag v$VERSION" >&2
+  exit 65
+fi
 
 # Without APPLE_SIGNING_IDENTITY, use the first Developer ID Application identity in the keychain,
 # by its SHA-1 fingerprint (see the note on accents below).
@@ -71,7 +87,6 @@ else
   echo "Not notarized (KEYFOLD_NOTARY_PROFILE not set): Gatekeeper will warn on other Macs."
 fi
 
-VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
 case "$(uname -m)" in
   arm64) ARCH=aarch64 ;;
   *) ARCH=x86_64 ;;

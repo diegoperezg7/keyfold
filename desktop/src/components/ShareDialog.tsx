@@ -1,7 +1,7 @@
 import { Check, Copy, Share2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import { useT } from '../i18n'
+import { errorText, useT } from '../i18n'
 import { isPublicKey, parseRecipients } from '../logic'
 import { Segmented } from './Segmented'
 
@@ -61,7 +61,7 @@ function Send({ names, onClose }: { names: string[]; onClose: () => void }) {
       await navigator.clipboard.writeText(pkg)
       setStatus({ kind: 'done', text: t('shareCopied') })
     } catch (error) {
-      setStatus({ kind: 'error', text: String(error) === 'locked' ? t('shareCancelled') : String(error) })
+      setStatus({ kind: 'error', text: String(error) === 'locked' ? t('shareCancelled') : errorText(error) })
     }
   }
 
@@ -111,7 +111,7 @@ function Receive({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
 
   useEffect(() => {
-    api.publicKey().then(setKey).catch((error) => setStatus({ kind: 'error', text: String(error) }))
+    api.publicKey().then(setKey).catch((error) => setStatus({ kind: 'error', text: errorText(error) }))
   }, [])
 
   async function copyKey() {
@@ -128,7 +128,7 @@ function Receive({ onClose }: { onClose: () => void }) {
       setPkg('')
       setStatus({ kind: 'done', text: t(imported.length === 1 ? 'importDoneOne' : 'importDoneOther', { n: imported.length }) })
     } catch (error) {
-      setStatus({ kind: 'error', text: String(error) })
+      setStatus({ kind: 'error', text: errorText(error) })
     }
   }
 
