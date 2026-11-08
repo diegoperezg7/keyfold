@@ -122,7 +122,7 @@ fn call_tool(config: &Config, l: &Keyfold, name: &str, args: &Map<String, Value>
             let project = args.get("project").and_then(Value::as_str);
             let mut info = l.create_slot(secret, project)?;
             if !info.has_value && args.get("prompt").and_then(Value::as_bool).unwrap_or(true) {
-                prompt::request(config, secret, project);
+                prompt::request(config, secret, project).map_err(ToolError::Message)?;
                 info = l.slot(secret)?;
             }
             Ok(slot_json(&info))
@@ -139,7 +139,7 @@ fn call_tool(config: &Config, l: &Keyfold, name: &str, args: &Map<String, Value>
         "request_secret_value" => {
             let secret = string_arg(args, "name")?;
             l.slot(secret)?;
-            let saved = prompt::request(config, secret, None);
+            let saved = prompt::request(config, secret, None).map_err(ToolError::Message)?;
             let mut result = slot_json(&l.slot(secret)?);
             result["saved"] = json!(saved);
             Ok(result)

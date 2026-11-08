@@ -231,7 +231,7 @@ fn create(config: &Config, l: &Keyfold, args: &Arguments) -> Result<i32, Keyfold
         println!("{}", t(&format!("Proyecto: {p}"), &format!("Project: {p}")));
     }
     if !info.has_value && !args.has("--no-prompt") {
-        prompt::request(config, name, args.project.as_deref());
+        prompt::request(config, name, args.project.as_deref()).map_err(KeyfoldError::Io)?;
         info = l.slot(name)?;
     }
     println!("{}", t(&format!("Valor: {}", status(&info)), &format!("Value: {}", status(&info))));
@@ -249,7 +249,7 @@ fn set(config: &Config, l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldErr
         l.set_value(name, input.trim())?;
     } else {
         l.slot(name)?;
-        if !prompt::request(config, name, None) {
+        if !prompt::request(config, name, None).map_err(KeyfoldError::Io)? {
             println!("{}", t("Cancelado. Valor sin cambios.", "Cancelled. Value unchanged."));
             return Ok(1);
         }
@@ -265,7 +265,7 @@ fn receive(config: &Config, l: &Keyfold, args: &Arguments) -> Result<i32, Keyfol
     if !existed {
         println!("{}", t(&format!("Hueco creado: {}", info.reference), &format!("Slot created: {}", info.reference)));
     }
-    if !prompt::request(config, name, None) {
+    if !prompt::request(config, name, None).map_err(KeyfoldError::Io)? {
         println!("{}", t("Cancelado. Valor sin cambios.", "Cancelled. Value unchanged."));
         return Ok(1);
     }
