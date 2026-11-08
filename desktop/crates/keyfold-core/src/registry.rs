@@ -69,8 +69,18 @@ impl RegistryStore {
         }
     }
 
-    /// Atomic write (temp file + rename), readable only by the user on Unix.
-    pub fn save(&self, registry: &Registry) -> io::Result<()> {
+    /// Exclusive advisory lock on `registry.lock` next to the registry, held until the returned
+    /// file is dropped. Take it around every load-modify-save: the app, the MCP server and the
+    /// CLI may change the registry at the same time, and without it one change can undo another.
+    /// Not reentrant: never take it twice in the same call chain.
+    pub fn lock(&self) -> io::Result<fs::File> {
+        self.create_directory()?;
+        let file = fs::OpenOptions::new().create(true).truncate(false).write(true).open(self.path.with_file_name("registry.lock"))?;
+        file.lock()?;
+        Ok(file)
+    }
+
+    fn create_directory(&self) -> io::Result<()> {
         if let Some(dir) = self.path.parent() {
             fs::create_dir_all(dir)?;
             // Key and project names are not secret, but they are nobody else's business.
@@ -80,6 +90,12 @@ impl RegistryStore {
                 fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
             }
         }
+        Ok(())
+    }
+
+    /// Atomic write (temp file + rename), readable only by the user on Unix.
+    pub fn save(&self, registry: &Registry) -> io::Result<()> {
+        self.create_directory()?;
         let json = serde_json::to_vec_pretty(registry).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         // Unique temp name: the app, the MCP server and the CLI may save at the same time.
         static WRITES: AtomicU64 = AtomicU64::new(0);

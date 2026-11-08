@@ -377,3 +377,28 @@ fn import_opens_only_packages_for_this_computer() {
     s.assert_never_printed(&value);
     other.assert_never_printed(&value);
 }
+
+/// Several processes changing the registry at once (app, MCP server, CLI): none of the
+/// changes is lost, thanks to the registry lock.
+#[test]
+fn concurrent_processes_never_lose_a_key() {
+    let s = Sandbox::new("race");
+    let children: Vec<_> = (0..12)
+        .map(|i| {
+            Command::new(env!("CARGO_BIN_EXE_keyfold"))
+                .args(["create", &format!("RACE_KEY_{i}"), "--project", "race", "--no-prompt"])
+                .env("KEYFOLD_HOME", &s.home)
+                .env("KEYFOLD_SERVICE", &s.service)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("spawn keyfold")
+        })
+        .collect();
+    for mut child in children {
+        assert!(child.wait().unwrap().success());
+    }
+    let registry: Value = serde_json::from_str(&s.registry()).unwrap();
+    assert_eq!(registry["secrets"].as_object().unwrap().len(), 12, "{registry}");
+    assert_eq!(registry["projects"]["race"].as_array().unwrap().len(), 12, "{registry}");
+}

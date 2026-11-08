@@ -136,6 +136,7 @@ impl Keyfold {
         if let Some(p) = project {
             validate_project(p)?;
         }
+        let _lock = self.registry.lock()?;
         let mut registry = self.registry.load()?;
         registry.secrets.entry(name.to_string()).or_insert_with(|| SecretSlot { created_at: now_iso8601() });
         if let Some(p) = project {
@@ -178,6 +179,7 @@ impl Keyfold {
 
     pub fn assign(&self, name: &str, project: &str) -> Result<SlotInfo, KeyfoldError> {
         validate_project(project)?;
+        let _lock = self.registry.lock()?;
         let mut registry = self.registry.load()?;
         if !registry.secrets.contains_key(name) {
             return Err(KeyfoldError::UnknownSecret(name.into()));
@@ -190,6 +192,7 @@ impl Keyfold {
     /// Takes a key out of a project. A project left with no keys disappears, like after `delete`.
     /// The key and its value stay. Not assigned to that project: nothing changes.
     pub fn unassign(&self, name: &str, project: &str) -> Result<SlotInfo, KeyfoldError> {
+        let _lock = self.registry.lock()?;
         let mut registry = self.registry.load()?;
         if !registry.secrets.contains_key(name) {
             return Err(KeyfoldError::UnknownSecret(name.into()));
@@ -223,6 +226,7 @@ impl Keyfold {
     }
 
     pub fn delete(&self, name: &str) -> Result<(), KeyfoldError> {
+        let _lock = self.registry.lock()?;
         let mut registry = self.registry.load()?;
         if !registry.secrets.contains_key(name) {
             return Err(KeyfoldError::UnknownSecret(name.into()));
@@ -267,6 +271,7 @@ impl Keyfold {
     pub fn link_folder(&self, folder: &Path, project: &str) -> Result<String, KeyfoldError> {
         validate_project(project)?;
         let path = canonical(folder)?;
+        let _lock = self.registry.lock()?;
         let mut registry = self.registry.load()?;
         registry.folders.insert(path.clone(), project.to_string());
         self.registry.save(&registry)?;
@@ -276,6 +281,7 @@ impl Keyfold {
     /// Removes a folder link. Returns whether there was one. Works for folders that no longer exist.
     pub fn unlink_folder(&self, folder: &Path) -> Result<bool, KeyfoldError> {
         let path = canonical(folder).unwrap_or_else(|_| folder.to_string_lossy().into_owned());
+        let _lock = self.registry.lock()?;
         let mut registry = self.registry.load()?;
         let removed = registry.folders.remove(&path).is_some();
         if removed {
@@ -564,6 +570,32 @@ mod tests {
 
         std::fs::write(sub.join(PROJECT_FILE), "bad/name\n").unwrap();
         assert_eq!(project_for_dir(&sub), Err(KeyfoldError::InvalidProject("bad/name".into())));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn concurrent_changes_never_lose_a_key() {
+        let (_, dir) = keyfold();
+        let threads: Vec<_> = (0..8)
+            .map(|t| {
+                let dir = dir.clone();
+                std::thread::spawn(move || {
+                    // Each thread has its own Keyfold, like separate processes would.
+                    let l = Keyfold::new(Box::new(MemoryStore::default()), RegistryStore::new(&dir));
+                    for i in 0..10 {
+                        l.create_slot(&format!("KEY_{t}_{i}"), Some(&format!("p{t}"))).unwrap();
+                        l.assign(&format!("KEY_{t}_{i}"), "shared").unwrap();
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        let l = Keyfold::new(Box::new(MemoryStore::default()), RegistryStore::new(&dir));
+        assert_eq!(l.list(None).unwrap().len(), 80);
+        assert_eq!(l.list(Some("shared")).unwrap().len(), 80);
+        assert_eq!(l.projects().unwrap().len(), 9);
         let _ = std::fs::remove_dir_all(dir);
     }
 
