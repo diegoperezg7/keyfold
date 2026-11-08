@@ -16,14 +16,19 @@ struct Arguments {
     /// `--length N` (generate).
     length: Option<String>,
     flags: Vec<String>,
+    /// Every option given, value options included, to check them against the command.
+    options: Vec<String>,
     command: Vec<String>,
 }
 
 impl Arguments {
     fn parse(raw: &[String]) -> Result<Self, KeyfoldError> {
-        let mut args = Self { positionals: vec![], project: None, to: vec![], out: None, length: None, flags: vec![], command: vec![] };
+        let mut args = Self { positionals: vec![], project: None, to: vec![], out: None, length: None, flags: vec![], options: vec![], command: vec![] };
         let mut it = raw.iter();
         while let Some(arg) = it.next() {
+            if arg.starts_with("--") && arg != "--" {
+                args.options.push(arg.clone());
+            }
             match arg.as_str() {
                 "--" => {
                     args.command = it.cloned().collect();
@@ -45,6 +50,23 @@ impl Arguments {
     }
 }
 
+/// The options each command accepts. Anything else is refused rather than silently ignored
+/// (a mistyped `--projet` must not run with the wrong keys).
+fn allowed_options(command: &str) -> &'static [&'static str] {
+    match command {
+        "create" => &["--project", "--no-prompt"],
+        "set" => &["--stdin"],
+        "generate" => &["--project", "--length"],
+        "assign" | "unassign" | "link" | "list" | "run" => &["--project"],
+        "share" => &["--all", "--to", "--out"],
+        _ => &[],
+    }
+}
+
+const COMMANDS: &[&str] = &[
+    "create", "set", "generate", "receive", "assign", "unassign", "link", "unlink", "folders", "list", "run", "delete", "id", "share", "import", "connect",
+];
+
 pub fn run(config: &Config, argv: &[String]) -> i32 {
     let keyfold = Keyfold::open(config);
     let command = argv[0].as_str();
@@ -52,6 +74,20 @@ pub fn run(config: &Config, argv: &[String]) -> i32 {
         Ok(a) => a,
         Err(e) => return fail(&e),
     };
+    if COMMANDS.contains(&command) {
+        let allowed = allowed_options(command);
+        if let Some(unknown) = args.options.iter().find(|o| !allowed.contains(&o.as_str())) {
+            let valid = if allowed.is_empty() { "-".to_string() } else { allowed.join(" ") };
+            eprintln!(
+                "{}",
+                t(
+                    &format!("Opción desconocida para keyfold {command}: {unknown}. Opciones válidas: {valid}"),
+                    &format!("Unknown option for keyfold {command}: {unknown}. Valid options: {valid}"),
+                )
+            );
+            return 64;
+        }
+    }
     let result = match command {
         "create" => create(config, &keyfold, &args),
         "set" => set(config, &keyfold, &args),
@@ -246,7 +282,7 @@ fn set(config: &Config, l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldErr
     if args.has("--stdin") {
         let mut input = String::new();
         std::io::stdin().read_to_string(&mut input)?;
-        l.set_value(name, input.trim())?;
+        l.set_value(name, strip_line_ending(&input))?;
     } else {
         l.slot(name)?;
         if !prompt::request(config, name, None).map_err(KeyfoldError::Io)? {
@@ -256,6 +292,12 @@ fn set(config: &Config, l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldErr
     }
     println!("{}", t(&format!("Valor guardado para keyfold://{name}"), &format!("Value stored for keyfold://{name}")));
     Ok(0)
+}
+
+/// `echo value | keyfold set NAME --stdin` adds one line ending: drop it and nothing else, so
+/// spaces or newlines that are part of the value are kept.
+fn strip_line_ending(input: &str) -> &str {
+    input.strip_suffix("\r\n").or_else(|| input.strip_suffix('\n')).unwrap_or(input)
 }
 
 fn receive(config: &Config, l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
@@ -478,5 +520,19 @@ mod signals {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stdin_loses_one_line_ending_only() {
+        assert_eq!(strip_line_ending("value\n"), "value");
+        assert_eq!(strip_line_ending("value\r\n"), "value");
+        assert_eq!(strip_line_ending("value"), "value");
+        assert_eq!(strip_line_ending("  value \n\n"), "  value \n");
+        assert_eq!(strip_line_ending("-----BEGIN-----\nabc\n-----END-----\n"), "-----BEGIN-----\nabc\n-----END-----");
     }
 }
