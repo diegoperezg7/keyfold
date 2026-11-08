@@ -276,7 +276,10 @@ fn import_env(app: AppHandle, window: WebviewWindow, state: State<AppState>, pic
 
 /// Opens a package made for this computer and stores its keys. Returns names and projects only.
 #[tauri::command]
-fn import_package(app: AppHandle, state: State<AppState>, package: String) -> Result<Vec<SlotInfo>, String> {
+fn import_package(app: AppHandle, window: WebviewWindow, state: State<AppState>, package: String) -> Result<Vec<SlotInfo>, String> {
+    if state.prompt.is_some() || window.label() != "main" {
+        return Err("not available in this window".into());
+    }
     let imported = state.keyfold().import(&package).map_err(|e| e.to_string())?;
     let _ = app.emit("keys-changed", ());
     Ok(imported)
