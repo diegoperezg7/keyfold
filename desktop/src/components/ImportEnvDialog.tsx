@@ -1,7 +1,7 @@
 import { FolderSearch } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api, type EnvScan, type SlotInfo } from '../api'
-import { useT } from '../i18n'
+import { errorText, useT } from '../i18n'
 import { SuccessMark } from './SuccessMark'
 import { envGroups, envPicks, initialEnvPicks, toggleEnvPick } from '../logic'
 
@@ -36,7 +36,7 @@ export function ImportEnvDialog({ onClose }: { onClose: () => void }) {
       }
       setStatus({ kind: 'idle' })
     } catch (error) {
-      setStatus({ kind: 'error', text: String(error) })
+      setStatus({ kind: 'error', text: errorText(error) })
     }
   }
 
@@ -50,7 +50,7 @@ export function ImportEnvDialog({ onClose }: { onClose: () => void }) {
       setDone(imported)
       setStatus({ kind: 'idle' })
     } catch (error) {
-      setStatus({ kind: 'error', text: String(error) })
+      setStatus({ kind: 'error', text: errorText(error) })
     }
   }
 

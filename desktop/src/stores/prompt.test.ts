@@ -4,6 +4,9 @@ const saved: Array<{ name: string; value: string }> = []
 let failNext = false
 
 vi.mock('../api', () => ({
+  // i18n (error messages) reads these at import.
+  boot: { lang: 'en' },
+  isWindows: false,
   api: {
     saveSecret: vi.fn(async (name: string, value: string) => {
       if (failNext) throw new Error('Keychain error -25293')
@@ -59,8 +62,9 @@ describe('paste window state', () => {
     failNext = true
     usePrompt.getState().setValue(secret)
     expect(await usePrompt.getState().submit('EXA_API_KEY', 'click')).toBe(false)
-    const { failed, value } = usePrompt.getState()
+    const { failed, error, value } = usePrompt.getState()
     expect(failed).toBe(true)
+    expect(error).toBe('Keychain error -25293')
     // The typed value stays in the (masked) field so the user can retry; nothing else holds it.
     expect(value).toBe(secret)
     expect(JSON.stringify({ ...usePrompt.getState(), value: '' })).not.toContain(secret)

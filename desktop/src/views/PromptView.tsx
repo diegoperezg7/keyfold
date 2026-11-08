@@ -13,7 +13,7 @@ const SUCCESS_MS = 1300
 /** The paste window. A password field only: no reveal toggle, no copy. */
 export function PromptView({ name, project }: { name: string; project?: string | null }) {
   const t = useT()
-  const { value, pasted, saving, failed, setValue, markPasted, submit, cancel } = usePrompt()
+  const { value, pasted, saving, failed, error, setValue, markPasted, submit, cancel } = usePrompt()
   const [done, setDone] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   const placeholder = looksLikePlaceholder(value)
@@ -93,7 +93,7 @@ export function PromptView({ name, project }: { name: string; project?: string |
 
       <p className={failed ? 'hint hint-error' : placeholder ? 'hint hint-warn' : 'hint'}>
         {failed ? (
-          t('saveError')
+          error ? `${t('saveError')} ${error}` : t('saveError')
         ) : placeholder ? (
           <>
             <TriangleAlert size={12} aria-hidden /> {t('placeholderHint')}

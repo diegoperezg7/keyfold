@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { api, type SlotInfo } from '../api'
+import { errorText } from '../i18n'
 import type { ProjectFilter, Sort, SortKey, StatusFilter } from '../logic'
 
 interface KeysState {
@@ -55,7 +56,7 @@ export const useKeys = create<KeysState>((set, get) => ({
       await get().load()
       return null
     } catch (error) {
-      return String(error)
+      return errorText(error)
     }
   },
 
@@ -65,7 +66,7 @@ export const useKeys = create<KeysState>((set, get) => ({
       await get().load()
       return null
     } catch (error) {
-      return String(error)
+      return errorText(error)
     }
   },
 
@@ -75,7 +76,7 @@ export const useKeys = create<KeysState>((set, get) => ({
       await get().load()
       return null
     } catch (error) {
-      return String(error)
+      return errorText(error)
     }
   },
 
@@ -85,7 +86,7 @@ export const useKeys = create<KeysState>((set, get) => ({
       await get().load()
       return null
     } catch (error) {
-      return String(error)
+      return errorText(error)
     }
   },
 
@@ -95,7 +96,7 @@ export const useKeys = create<KeysState>((set, get) => ({
       await get().load()
       return null
     } catch (error) {
-      return String(error)
+      return errorText(error)
     }
   },
 
