@@ -1,5 +1,5 @@
 //! Minimal MCP server over stdio (newline-delimited JSON-RPC 2.0).
-//! Same tools and contract as the Swift version: no tool ever returns a value.
+//! Contract: no tool ever returns a value, only names, references, status and projects.
 
 use crate::prompt;
 use keyfold_core::{Config, Keyfold, KeyfoldError, SlotInfo, GENERATE_DEFAULT, GENERATE_MAX, GENERATE_MIN};
@@ -122,7 +122,7 @@ fn call_tool(config: &Config, l: &Keyfold, name: &str, args: &Map<String, Value>
             let project = args.get("project").and_then(Value::as_str);
             let mut info = l.create_slot(secret, project)?;
             if !info.has_value && args.get("prompt").and_then(Value::as_bool).unwrap_or(true) {
-                prompt::request(config, secret, project);
+                prompt::request(config, secret, project).map_err(ToolError::Message)?;
                 info = l.slot(secret)?;
             }
             Ok(slot_json(&info))
@@ -139,7 +139,7 @@ fn call_tool(config: &Config, l: &Keyfold, name: &str, args: &Map<String, Value>
         "request_secret_value" => {
             let secret = string_arg(args, "name")?;
             l.slot(secret)?;
-            let saved = prompt::request(config, secret, None);
+            let saved = prompt::request(config, secret, None).map_err(ToolError::Message)?;
             let mut result = slot_json(&l.slot(secret)?);
             result["saved"] = json!(saved);
             Ok(result)
@@ -149,7 +149,12 @@ fn call_tool(config: &Config, l: &Keyfold, name: &str, args: &Map<String, Value>
             Ok(slot_json(&l.assign(secret, string_arg(args, "project")?)?))
         }
         "link_folder" => {
-            let path = l.link_folder(std::path::Path::new(string_arg(args, "path")?), string_arg(args, "project")?)?;
+            let folder = std::path::Path::new(string_arg(args, "path")?);
+            // The server's working folder is not the agent's: a relative path would link the wrong one.
+            if !folder.is_absolute() {
+                return Err(ToolError::Message(format!("The path must be absolute: {}", folder.display())));
+            }
+            let path = l.link_folder(folder, string_arg(args, "project")?)?;
             Ok(json!({ "path": path, "project": string_arg(args, "project")? }))
         }
         "unlink_folder" => {
@@ -206,6 +211,15 @@ fn handle(config: &Config, l: &Keyfold, method: &str, params: &Map<String, Value
     }
 }
 
+/// Valid JSON that is not a request: -32600, echoing the id when it is a usable one.
+fn invalid_request(id: Option<&Value>) -> Value {
+    let id = match id {
+        Some(id @ (Value::String(_) | Value::Number(_))) => id.clone(),
+        _ => Value::Null,
+    };
+    json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32600, "message": "Invalid Request" } })
+}
+
 /// Reads requests from stdin until EOF.
 pub fn serve(config: &Config) -> i32 {
     let l = Keyfold::open(config);
@@ -217,18 +231,23 @@ pub fn serve(config: &Config) -> i32 {
             continue;
         }
         let response = match serde_json::from_str::<Value>(&line) {
-            Ok(Value::Object(request)) if request.get("method").and_then(Value::as_str).is_some() => {
-                // Notifications (no id) get no response.
-                let Some(id) = request.get("id").cloned() else { continue };
-                let method = request["method"].as_str().unwrap_or_default();
-                let empty = Map::new();
-                let params = request.get("params").and_then(Value::as_object).unwrap_or(&empty);
-                match handle(config, &l, method, params) {
-                    Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
-                    Err((code, message)) => json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } }),
+            Ok(Value::Object(request)) => match request.get("method") {
+                Some(Value::String(method)) => {
+                    // Notifications (no id) get no response.
+                    let Some(id) = request.get("id").cloned() else { continue };
+                    let empty = Map::new();
+                    let params = request.get("params").and_then(Value::as_object).unwrap_or(&empty);
+                    match handle(config, &l, method, params) {
+                        Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+                        Err((code, message)) => json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } }),
+                    }
                 }
-            }
-            _ => json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": "Parse error" } }),
+                // A response from the client (to a request this server never sends): ignore it.
+                None if request.contains_key("id") && (request.contains_key("result") || request.contains_key("error")) => continue,
+                _ => invalid_request(request.get("id")),
+            },
+            Ok(_) => invalid_request(None),
+            Err(_) => json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": "Parse error" } }),
         };
         if writeln!(stdout, "{response}").and_then(|_| stdout.flush()).is_err() {
             break;

@@ -137,6 +137,9 @@ impl Keyfold {
                 .map(|(_, v)| v)
                 .ok_or_else(|| KeyfoldError::Io(format!("{} is no longer in {}", pick.name, pick.file)))?;
             let project = self.project_of(Path::new(&pick.file));
+            if let Some(p) = &project {
+                validate_project(p)?;
+            }
             match chosen.get_mut(&pick.name) {
                 Some((first, projects)) => {
                     if *first != value {

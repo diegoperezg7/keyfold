@@ -19,6 +19,10 @@ serde_json = "1"
 tauri-plugin-updater = "2"
 tauri-plugin-dialog = "2"
 
+# Forwarding SIGINT/SIGTERM/SIGHUP from `keyfold run` to its child. Already in the tree.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # Touch ID / account password before revealing a value. objc2, block2 and objc2-foundation
 # already come with Tauri; objc2-local-authentication is the only new crate.
 [target.'cfg(target_os = "macos")'.dependencies]

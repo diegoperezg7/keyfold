@@ -136,13 +136,14 @@ impl Keyfold {
         if let Some(p) = project {
             validate_project(p)?;
         }
+        let _lock = self.registry.lock()?;
         let mut registry = self.registry.load()?;
         registry.secrets.entry(name.to_string()).or_insert_with(|| SecretSlot { created_at: now_iso8601() });
         if let Some(p) = project {
             add(name, p, &mut registry);
         }
         self.registry.save(&registry)?;
-        Ok(self.info(name, &registry))
+        self.info(name, &registry)
     }
 
     /// Creates the key if needed and stores a random value made on this computer, for secrets
@@ -156,7 +157,7 @@ impl Keyfold {
         if !(GENERATE_MIN..=GENERATE_MAX).contains(&length) {
             return Err(KeyfoldError::InvalidLength(length));
         }
-        if self.registry.load()?.secrets.contains_key(name) && self.store.has_value(name) {
+        if self.registry.load()?.secrets.contains_key(name) && self.store.has_value(name)? {
             return Err(KeyfoldError::AlreadyHasValue(name.into()));
         }
         let value = random_secret(length)?;
@@ -178,18 +179,20 @@ impl Keyfold {
 
     pub fn assign(&self, name: &str, project: &str) -> Result<SlotInfo, KeyfoldError> {
         validate_project(project)?;
+        let _lock = self.registry.lock()?;
         let mut registry = self.registry.load()?;
         if !registry.secrets.contains_key(name) {
             return Err(KeyfoldError::UnknownSecret(name.into()));
         }
         add(name, project, &mut registry);
         self.registry.save(&registry)?;
-        Ok(self.info(name, &registry))
+        self.info(name, &registry)
     }
 
     /// Takes a key out of a project. A project left with no keys disappears, like after `delete`.
     /// The key and its value stay. Not assigned to that project: nothing changes.
     pub fn unassign(&self, name: &str, project: &str) -> Result<SlotInfo, KeyfoldError> {
+        let _lock = self.registry.lock()?;
         let mut registry = self.registry.load()?;
         if !registry.secrets.contains_key(name) {
             return Err(KeyfoldError::UnknownSecret(name.into()));
@@ -201,7 +204,7 @@ impl Keyfold {
             }
             self.registry.save(&registry)?;
         }
-        Ok(self.info(name, &registry))
+        self.info(name, &registry)
     }
 
     pub fn list(&self, project: Option<&str>) -> Result<Vec<SlotInfo>, KeyfoldError> {
@@ -211,7 +214,7 @@ impl Keyfold {
             None => registry.secrets.keys().cloned().collect(),
         };
         names.sort();
-        Ok(names.iter().map(|n| self.info(n, &registry)).collect())
+        names.iter().map(|n| self.info(n, &registry)).collect()
     }
 
     pub fn slot(&self, name: &str) -> Result<SlotInfo, KeyfoldError> {
@@ -219,10 +222,11 @@ impl Keyfold {
         if !registry.secrets.contains_key(name) {
             return Err(KeyfoldError::UnknownSecret(name.into()));
         }
-        Ok(self.info(name, &registry))
+        self.info(name, &registry)
     }
 
     pub fn delete(&self, name: &str) -> Result<(), KeyfoldError> {
+        let _lock = self.registry.lock()?;
         let mut registry = self.registry.load()?;
         if !registry.secrets.contains_key(name) {
             return Err(KeyfoldError::UnknownSecret(name.into()));
@@ -267,6 +271,7 @@ impl Keyfold {
     pub fn link_folder(&self, folder: &Path, project: &str) -> Result<String, KeyfoldError> {
         validate_project(project)?;
         let path = canonical(folder)?;
+        let _lock = self.registry.lock()?;
         let mut registry = self.registry.load()?;
         registry.folders.insert(path.clone(), project.to_string());
         self.registry.save(&registry)?;
@@ -276,6 +281,7 @@ impl Keyfold {
     /// Removes a folder link. Returns whether there was one. Works for folders that no longer exist.
     pub fn unlink_folder(&self, folder: &Path) -> Result<bool, KeyfoldError> {
         let path = canonical(folder).unwrap_or_else(|_| folder.to_string_lossy().into_owned());
+        let _lock = self.registry.lock()?;
         let mut registry = self.registry.load()?;
         let removed = registry.folders.remove(&path).is_some();
         if removed {
@@ -310,19 +316,19 @@ impl Keyfold {
         Ok(self.registry.load()?.projects.into_keys().collect())
     }
 
-    fn info(&self, name: &str, registry: &Registry) -> SlotInfo {
+    fn info(&self, name: &str, registry: &Registry) -> Result<SlotInfo, KeyfoldError> {
         let projects = registry
             .projects
             .iter()
             .filter(|(_, names)| names.iter().any(|n| n == name))
             .map(|(p, _)| p.clone())
             .collect();
-        SlotInfo {
+        Ok(SlotInfo {
             name: name.into(),
             reference: format!("keyfold://{name}"),
-            has_value: self.store.has_value(name),
+            has_value: self.store.has_value(name)?,
             projects,
-        }
+        })
     }
 }
 
@@ -367,7 +373,6 @@ fn canonical(folder: &Path) -> Result<String, KeyfoldError> {
     Ok(std::fs::canonicalize(folder)?.to_string_lossy().into_owned())
 }
 
-/// `^[A-Z_][A-Z0-9_]*$`
 /// Generated secrets: 48 letters and digits (~285 bits) unless asked otherwise.
 pub const GENERATE_DEFAULT: usize = 48;
 pub const GENERATE_MIN: usize = 16;
@@ -392,6 +397,7 @@ fn random_secret(length: usize) -> Result<String, KeyfoldError> {
     Ok(out)
 }
 
+/// `^[A-Z_][A-Z0-9_]*$`
 pub(crate) fn validate_name(name: &str) -> Result<(), KeyfoldError> {
     let mut chars = name.chars();
     let ok = matches!(chars.next(), Some(c) if c.is_ascii_uppercase() || c == '_')
@@ -448,6 +454,43 @@ mod tests {
         assert_eq!(l.generate("SHORT", None, GENERATE_MIN - 1), Err(KeyfoldError::InvalidLength(GENERATE_MIN - 1)));
         assert_eq!(l.generate("LONG", None, GENERATE_MAX + 1), Err(KeyfoldError::InvalidLength(GENERATE_MAX + 1)));
         assert!(l.list(None).unwrap().iter().all(|k| k.name != "SHORT" && k.name != "LONG"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A store that cannot tell whether a value exists, and records any write.
+    struct BrokenStore {
+        writes: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    impl SecretStore for BrokenStore {
+        fn set(&self, name: &str, _value: &str) -> Result<(), StoreError> {
+            self.writes.lock().unwrap().push(name.into());
+            Ok(())
+        }
+        fn get(&self, _name: &str) -> Result<Option<String>, StoreError> {
+            Err(StoreError("locked".into()))
+        }
+        fn has_value(&self, _name: &str) -> Result<bool, StoreError> {
+            Err(StoreError("Keychain error -25308: interaction not allowed".into()))
+        }
+        fn delete(&self, _name: &str) -> Result<(), StoreError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_store_error_is_never_taken_for_an_empty_slot() {
+        let (_, dir) = keyfold();
+        let writes = std::sync::Arc::default();
+        let l = Keyfold::new(Box::new(BrokenStore { writes: std::sync::Arc::clone(&writes) }), RegistryStore::new(&dir));
+        // The slot exists (registry only), but the store cannot say whether it has a value.
+        let mut registry = l.registry.load().unwrap();
+        registry.secrets.insert("DB_PASSWORD".into(), SecretSlot { created_at: now_iso8601() });
+        l.registry.save(&registry).unwrap();
+
+        assert!(matches!(l.generate("DB_PASSWORD", None, 32), Err(KeyfoldError::Store(_))));
+        assert!(writes.lock().unwrap().is_empty(), "generate must not write when it cannot check");
+        assert!(matches!(l.list(None), Err(KeyfoldError::Store(_))));
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -564,6 +607,32 @@ mod tests {
 
         std::fs::write(sub.join(PROJECT_FILE), "bad/name\n").unwrap();
         assert_eq!(project_for_dir(&sub), Err(KeyfoldError::InvalidProject("bad/name".into())));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn concurrent_changes_never_lose_a_key() {
+        let (_, dir) = keyfold();
+        let threads: Vec<_> = (0..8)
+            .map(|t| {
+                let dir = dir.clone();
+                std::thread::spawn(move || {
+                    // Each thread has its own Keyfold, like separate processes would.
+                    let l = Keyfold::new(Box::new(MemoryStore::default()), RegistryStore::new(&dir));
+                    for i in 0..10 {
+                        l.create_slot(&format!("KEY_{t}_{i}"), Some(&format!("p{t}"))).unwrap();
+                        l.assign(&format!("KEY_{t}_{i}"), "shared").unwrap();
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        let l = Keyfold::new(Box::new(MemoryStore::default()), RegistryStore::new(&dir));
+        assert_eq!(l.list(None).unwrap().len(), 80);
+        assert_eq!(l.list(Some("shared")).unwrap().len(), 80);
+        assert_eq!(l.projects().unwrap().len(), 9);
         let _ = std::fs::remove_dir_all(dir);
     }
 

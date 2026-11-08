@@ -16,14 +16,19 @@ struct Arguments {
     /// `--length N` (generate).
     length: Option<String>,
     flags: Vec<String>,
+    /// Every option given, value options included, to check them against the command.
+    options: Vec<String>,
     command: Vec<String>,
 }
 
 impl Arguments {
     fn parse(raw: &[String]) -> Result<Self, KeyfoldError> {
-        let mut args = Self { positionals: vec![], project: None, to: vec![], out: None, length: None, flags: vec![], command: vec![] };
+        let mut args = Self { positionals: vec![], project: None, to: vec![], out: None, length: None, flags: vec![], options: vec![], command: vec![] };
         let mut it = raw.iter();
         while let Some(arg) = it.next() {
+            if arg.starts_with("--") && arg != "--" {
+                args.options.push(arg.clone());
+            }
             match arg.as_str() {
                 "--" => {
                     args.command = it.cloned().collect();
@@ -45,6 +50,23 @@ impl Arguments {
     }
 }
 
+/// The options each command accepts. Anything else is refused rather than silently ignored
+/// (a mistyped `--projet` must not run with the wrong keys).
+fn allowed_options(command: &str) -> &'static [&'static str] {
+    match command {
+        "create" => &["--project", "--no-prompt"],
+        "set" => &["--stdin"],
+        "generate" => &["--project", "--length"],
+        "assign" | "unassign" | "link" | "list" | "run" => &["--project"],
+        "share" => &["--all", "--to", "--out"],
+        _ => &[],
+    }
+}
+
+const COMMANDS: &[&str] = &[
+    "create", "set", "generate", "receive", "assign", "unassign", "link", "unlink", "folders", "list", "run", "delete", "id", "share", "import", "connect",
+];
+
 pub fn run(config: &Config, argv: &[String]) -> i32 {
     let keyfold = Keyfold::open(config);
     let command = argv[0].as_str();
@@ -52,6 +74,20 @@ pub fn run(config: &Config, argv: &[String]) -> i32 {
         Ok(a) => a,
         Err(e) => return fail(&e),
     };
+    if COMMANDS.contains(&command) {
+        let allowed = allowed_options(command);
+        if let Some(unknown) = args.options.iter().find(|o| !allowed.contains(&o.as_str())) {
+            let valid = if allowed.is_empty() { "-".to_string() } else { allowed.join(" ") };
+            eprintln!(
+                "{}",
+                t(
+                    &format!("Opción desconocida para keyfold {command}: {unknown}. Opciones válidas: {valid}"),
+                    &format!("Unknown option for keyfold {command}: {unknown}. Valid options: {valid}"),
+                )
+            );
+            return 64;
+        }
+    }
     let result = match command {
         "create" => create(config, &keyfold, &args),
         "set" => set(config, &keyfold, &args),
@@ -158,6 +194,10 @@ fn share(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
     if args.to.is_empty() || (all == !args.positionals.is_empty()) {
         return Ok(usage());
     }
+    if !unlock::AVAILABLE {
+        eprintln!("{}", unlock::unavailable_message());
+        return Ok(1);
+    }
     let what = if all { t("todas tus claves", "all your keys") } else { args.positionals.join(", ") };
     let reason = t(&format!("compartir {what} cifradas"), &format!("share {what}, encrypted"));
     if !unlock::authenticate(&reason) {
@@ -227,7 +267,7 @@ fn create(config: &Config, l: &Keyfold, args: &Arguments) -> Result<i32, Keyfold
         println!("{}", t(&format!("Proyecto: {p}"), &format!("Project: {p}")));
     }
     if !info.has_value && !args.has("--no-prompt") {
-        prompt::request(config, name, args.project.as_deref());
+        prompt::request(config, name, args.project.as_deref()).map_err(KeyfoldError::Io)?;
         info = l.slot(name)?;
     }
     println!("{}", t(&format!("Valor: {}", status(&info)), &format!("Value: {}", status(&info))));
@@ -242,16 +282,22 @@ fn set(config: &Config, l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldErr
     if args.has("--stdin") {
         let mut input = String::new();
         std::io::stdin().read_to_string(&mut input)?;
-        l.set_value(name, input.trim())?;
+        l.set_value(name, strip_line_ending(&input))?;
     } else {
         l.slot(name)?;
-        if !prompt::request(config, name, None) {
+        if !prompt::request(config, name, None).map_err(KeyfoldError::Io)? {
             println!("{}", t("Cancelado. Valor sin cambios.", "Cancelled. Value unchanged."));
             return Ok(1);
         }
     }
     println!("{}", t(&format!("Valor guardado para keyfold://{name}"), &format!("Value stored for keyfold://{name}")));
     Ok(0)
+}
+
+/// `echo value | keyfold set NAME --stdin` adds one line ending: drop it and nothing else, so
+/// spaces or newlines that are part of the value are kept.
+fn strip_line_ending(input: &str) -> &str {
+    input.strip_suffix("\r\n").or_else(|| input.strip_suffix('\n')).unwrap_or(input)
 }
 
 fn receive(config: &Config, l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
@@ -261,7 +307,7 @@ fn receive(config: &Config, l: &Keyfold, args: &Arguments) -> Result<i32, Keyfol
     if !existed {
         println!("{}", t(&format!("Hueco creado: {}", info.reference), &format!("Slot created: {}", info.reference)));
     }
-    if !prompt::request(config, name, None) {
+    if !prompt::request(config, name, None).map_err(KeyfoldError::Io)? {
         println!("{}", t("Cancelado. Valor sin cambios.", "Cancelled. Value unchanged."));
         return Ok(1);
     }
@@ -378,8 +424,12 @@ fn run_command(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
         child.env(name, value);
     }
     let mut child = child.stdin(Stdio::inherit()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    #[cfg(unix)]
+    signals::forward_to(child.id());
 
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
     let pump = |mut source: Box<dyn Read + Send>, to_stdout: bool, secrets: Vec<(String, String)>| {
+        let done = done_tx.clone();
         std::thread::spawn(move || {
             let mut redactor = Redactor::new(&secrets);
             let mut chunk = [0u8; 8192];
@@ -391,19 +441,98 @@ fn run_command(l: &Keyfold, args: &Arguments) -> Result<i32, KeyfoldError> {
                     let _ = std::io::stderr().lock().write_all(bytes);
                 }
             };
-            while let Ok(n) = source.read(&mut chunk) {
-                if n == 0 {
-                    break;
+            loop {
+                match source.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => write(&redactor.feed(&chunk[..n])),
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(_) => break,
                 }
-                write(&redactor.feed(&chunk[..n]));
             }
             write(&redactor.finish());
+            let _ = done.send(());
         })
     };
-    let out = pump(Box::new(child.stdout.take().expect("piped")), true, secrets.clone());
-    let err = pump(Box::new(child.stderr.take().expect("piped")), false, secrets);
+    let _out = pump(Box::new(child.stdout.take().expect("piped")), true, secrets.clone());
+    let _err = pump(Box::new(child.stderr.take().expect("piped")), false, secrets);
+    drop(done_tx);
     let status = child.wait()?;
-    let _ = out.join();
-    let _ = err.join();
-    Ok(status.code().unwrap_or(1))
+    #[cfg(unix)]
+    signals::forward_to(0);
+    // A background process the child started may keep the pipes open long after it exits:
+    // give the output a moment to drain, then return instead of waiting for it.
+    let deadline = std::time::Instant::now() + OUTPUT_DRAIN;
+    for _ in 0..2 {
+        if done_rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now())).is_err() {
+            break;
+        }
+    }
+    Ok(exit_code(&status))
+}
+
+/// How long `run` waits for the child's output after the child exits.
+const OUTPUT_DRAIN: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// The child's exit code, or 128 + signal number when a signal ended it (shell convention).
+fn exit_code(status: &std::process::ExitStatus) -> i32 {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return 128 + signal;
+        }
+    }
+    status.code().unwrap_or(1)
+}
+
+/// SIGINT, SIGTERM and SIGHUP sent to `keyfold run` go on to the child, so stopping the
+/// wrapper (an agent's timeout, a closed terminal, `kill`) stops the program it runs, and
+/// `run` returns once the child has handled them.
+#[cfg(unix)]
+mod signals {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    use std::sync::Once;
+
+    static CHILD: AtomicI32 = AtomicI32::new(0);
+
+    extern "C" fn forward(signal: libc::c_int) {
+        // Only async-signal-safe calls here: an atomic load and kill(2).
+        let pid = CHILD.load(Ordering::SeqCst);
+        if pid > 0 {
+            unsafe { libc::kill(pid, signal) };
+        }
+    }
+
+    /// Starts forwarding to `pid`; 0 stops it (the signals are then ignored until exit).
+    pub fn forward_to(pid: u32) {
+        static INSTALL: Once = Once::new();
+        CHILD.store(pid as i32, Ordering::SeqCst);
+        INSTALL.call_once(|| {
+            for signal in [libc::SIGINT, libc::SIGTERM, libc::SIGHUP] {
+                // SAFETY: plain sigaction with a handler that only calls async-signal-safe
+                // functions. SA_RESTART keeps the output pumps' reads from failing with EINTR.
+                unsafe {
+                    let mut action: libc::sigaction = std::mem::zeroed();
+                    action.sa_sigaction = forward as *const () as libc::sighandler_t;
+                    action.sa_flags = libc::SA_RESTART;
+                    libc::sigemptyset(&mut action.sa_mask);
+                    libc::sigaction(signal, &action, std::ptr::null_mut());
+                }
+            }
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stdin_loses_one_line_ending_only() {
+        assert_eq!(strip_line_ending("value\n"), "value");
+        assert_eq!(strip_line_ending("value\r\n"), "value");
+        assert_eq!(strip_line_ending("value"), "value");
+        assert_eq!(strip_line_ending("  value \n\n"), "  value \n");
+        assert_eq!(strip_line_ending("-----BEGIN-----\nabc\n-----END-----\n"), "-----BEGIN-----\nabc\n-----END-----");
+    }
 }

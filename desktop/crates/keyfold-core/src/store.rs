@@ -20,8 +20,9 @@ impl fmt::Display for StoreError {
 pub trait SecretStore: Send + Sync {
     fn set(&self, name: &str, value: &str) -> Result<(), StoreError>;
     fn get(&self, name: &str) -> Result<Option<String>, StoreError>;
-    /// Must not decrypt the value (no OS prompt).
-    fn has_value(&self, name: &str) -> bool;
+    /// Must not decrypt the value (no OS prompt). An error from the store is an error, never
+    /// "no value": callers like `generate` would otherwise overwrite a value they could not see.
+    fn has_value(&self, name: &str) -> Result<bool, StoreError>;
     fn delete(&self, name: &str) -> Result<(), StoreError>;
 }
 
@@ -34,7 +35,48 @@ pub fn system_store(service: &str) -> Box<dyn SecretStore> {
     #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = service;
-        panic!("keyfold: no credential store for this OS yet")
+        Box::new(UnsupportedStore)
+    }
+}
+
+/// Stored values must be UTF-8 text (environment variables). Anything else is reported, never
+/// silently altered.
+fn utf8_value(name: &str, bytes: Vec<u8>) -> Result<String, StoreError> {
+    String::from_utf8(bytes).map_err(|_| {
+        StoreError(crate::l10n::t(
+            &format!("El valor guardado de {name} no es texto UTF-8 y no se puede usar. Vuelve a guardarlo con: keyfold set {name}"),
+            &format!("The stored value of {name} is not UTF-8 text and cannot be used. Store it again with: keyfold set {name}"),
+        ))
+    })
+}
+
+/// Every call fails with a clear message, on platforms with no credential store support yet.
+#[cfg(not(any(target_os = "macos", windows)))]
+struct UnsupportedStore;
+
+#[cfg(not(any(target_os = "macos", windows)))]
+impl UnsupportedStore {
+    fn error() -> StoreError {
+        StoreError(crate::l10n::t(
+            "Keyfold aún no tiene almacén de credenciales para este sistema operativo (solo macOS y Windows).",
+            "Keyfold has no credential store for this operating system yet (macOS and Windows only).",
+        ))
+    }
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+impl SecretStore for UnsupportedStore {
+    fn set(&self, _name: &str, _value: &str) -> Result<(), StoreError> {
+        Err(Self::error())
+    }
+    fn get(&self, _name: &str) -> Result<Option<String>, StoreError> {
+        Err(Self::error())
+    }
+    fn has_value(&self, _name: &str) -> Result<bool, StoreError> {
+        Err(Self::error())
+    }
+    fn delete(&self, _name: &str) -> Result<(), StoreError> {
+        Err(Self::error())
     }
 }
 
@@ -52,8 +94,8 @@ impl SecretStore for MemoryStore {
     fn get(&self, name: &str) -> Result<Option<String>, StoreError> {
         Ok(self.values.lock().unwrap().get(name).cloned())
     }
-    fn has_value(&self, name: &str) -> bool {
-        self.values.lock().unwrap().contains_key(name)
+    fn has_value(&self, name: &str) -> Result<bool, StoreError> {
+        Ok(self.values.lock().unwrap().contains_key(name))
     }
     fn delete(&self, name: &str) -> Result<(), StoreError> {
         self.values.lock().unwrap().remove(name);
@@ -85,22 +127,25 @@ mod mac {
 
         fn get(&self, name: &str) -> Result<Option<String>, StoreError> {
             match get_generic_password(&self.service, name) {
-                Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).into_owned())),
+                Ok(bytes) => super::utf8_value(name, bytes).map(Some),
                 Err(e) if e.code() == ERR_NOT_FOUND => Ok(None),
                 Err(e) => Err(error(e)),
             }
         }
 
-        fn has_value(&self, name: &str) -> bool {
-            ItemSearchOptions::new()
+        fn has_value(&self, name: &str) -> Result<bool, StoreError> {
+            match ItemSearchOptions::new()
                 .class(ItemClass::generic_password())
                 .service(&self.service)
                 .account(name)
                 .load_attributes(true)
                 .limit(Limit::Max(1))
                 .search()
-                .map(|items| !items.is_empty())
-                .unwrap_or(false)
+            {
+                Ok(items) => Ok(!items.is_empty()),
+                Err(e) if e.code() == ERR_NOT_FOUND => Ok(false),
+                Err(e) => Err(error(e)),
+            }
         }
 
         fn delete(&self, name: &str) -> Result<(), StoreError> {
@@ -141,6 +186,9 @@ mod win {
         CredDeleteW, CredFree, CredReadW, CredWriteW, CREDENTIALW, CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC,
     };
 
+    /// CRED_MAX_CREDENTIAL_BLOB_SIZE: the most a generic credential can hold.
+    const MAX_BLOB_BYTES: usize = 5 * 512;
+
     /// Windows Credential Manager (DPAPI-encrypted per user). Target = "service:name".
     pub struct CredentialStore {
         pub service: String,
@@ -165,6 +213,12 @@ mod win {
             let mut target = self.target(name);
             let mut user = wide(name);
             let blob = value.as_bytes();
+            if blob.len() > MAX_BLOB_BYTES {
+                return Err(StoreError(crate::l10n::t(
+                    &format!("El valor de {name} ocupa {} bytes y el Administrador de credenciales de Windows admite como máximo {MAX_BLOB_BYTES}.", blob.len()),
+                    &format!("The value of {name} is {} bytes and Windows Credential Manager holds at most {MAX_BLOB_BYTES}.", blob.len()),
+                )));
+            }
             let mut credential: CREDENTIALW = unsafe { std::mem::zeroed() };
             credential.Type = CRED_TYPE_GENERIC;
             credential.TargetName = target.as_mut_ptr();
@@ -184,24 +238,23 @@ mod win {
             if unsafe { CredReadW(target.as_ptr(), CRED_TYPE_GENERIC, 0, &mut credential) } == 0 {
                 return if unsafe { GetLastError() } == ERROR_NOT_FOUND { Ok(None) } else { Err(last_error()) };
             }
-            let value = unsafe {
+            let bytes = unsafe {
                 let c = &*credential;
-                let bytes = std::slice::from_raw_parts(c.CredentialBlob, c.CredentialBlobSize as usize);
-                let value = String::from_utf8_lossy(bytes).into_owned();
+                let bytes = std::slice::from_raw_parts(c.CredentialBlob, c.CredentialBlobSize as usize).to_vec();
                 CredFree(credential as *const _);
-                value
+                bytes
             };
-            Ok(Some(value))
+            super::utf8_value(name, bytes).map(Some)
         }
 
-        fn has_value(&self, name: &str) -> bool {
+        fn has_value(&self, name: &str) -> Result<bool, StoreError> {
             let target = self.target(name);
             let mut credential: *mut CREDENTIALW = null_mut();
             if unsafe { CredReadW(target.as_ptr(), CRED_TYPE_GENERIC, 0, &mut credential) } == 0 {
-                return false;
+                return if unsafe { GetLastError() } == ERROR_NOT_FOUND { Ok(false) } else { Err(last_error()) };
             }
             unsafe { CredFree(credential as *const _) };
-            true
+            Ok(true)
         }
 
         fn delete(&self, name: &str) -> Result<(), StoreError> {
@@ -218,20 +271,27 @@ mod win {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_value_that_is_not_utf8_is_an_error_not_a_lossy_copy() {
+        assert_eq!(utf8_value("A_KEY", b"plain".to_vec()).unwrap(), "plain");
+        let error = utf8_value("A_KEY", vec![b'a', 0xff, b'b']).unwrap_err();
+        assert!(error.0.contains("A_KEY") && error.0.contains("UTF-8"), "{error}");
+    }
+
     /// Real OS store with a throwaway service; same process creates and reads, so no prompt.
     #[cfg(any(target_os = "macos", windows))]
     #[test]
     fn system_store_round_trip() {
         let service = format!("com.diego.llavero.tests.core-{}", std::process::id());
         let store = system_store(&service);
-        assert!(!store.has_value("CORE_TEST_KEY"));
+        assert!(!store.has_value("CORE_TEST_KEY").unwrap());
         assert_eq!(store.get("CORE_TEST_KEY").unwrap(), None);
         store.set("CORE_TEST_KEY", "first").unwrap();
         store.set("CORE_TEST_KEY", "second").unwrap(); // update path
-        assert!(store.has_value("CORE_TEST_KEY"));
+        assert!(store.has_value("CORE_TEST_KEY").unwrap());
         assert_eq!(store.get("CORE_TEST_KEY").unwrap().as_deref(), Some("second"));
         store.delete("CORE_TEST_KEY").unwrap();
         store.delete("CORE_TEST_KEY").unwrap(); // deleting a missing key is fine
-        assert!(!store.has_value("CORE_TEST_KEY"));
+        assert!(!store.has_value("CORE_TEST_KEY").unwrap());
     }
 }

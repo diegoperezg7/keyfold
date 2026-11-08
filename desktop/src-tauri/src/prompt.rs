@@ -2,6 +2,7 @@
 //! CLI and the MCP server stay headless and their stdout is never touched by the UI.
 //! The child reports "saved" through a result file; the value never travels back.
 
+use keyfold_core::l10n::t;
 use keyfold_core::Config;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -42,9 +43,11 @@ impl ChildArgs {
     }
 }
 
-/// Opens the paste window and blocks until it closes. True if a value was stored.
-pub fn request(config: &Config, name: &str, project: Option<&str>) -> bool {
-    let Ok(exe) = std::env::current_exe() else { return false };
+/// Opens the paste window and blocks until it closes. Ok(true) if a value was stored, Ok(false)
+/// if the user closed it without saving, Err with the cause if the window could not be shown.
+pub fn request(config: &Config, name: &str, project: Option<&str>) -> Result<bool, String> {
+    let failed = |cause: String| t(&format!("No se pudo abrir la ventana para pegar el valor: {cause}"), &format!("Could not open the paste window: {cause}"));
+    let exe = std::env::current_exe().map_err(|e| failed(e.to_string()))?;
     let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     let result_file = std::env::temp_dir().join(format!("keyfold-prompt-{}-{nanos}.result", std::process::id()));
 
@@ -63,11 +66,15 @@ pub fn request(config: &Config, name: &str, project: Option<&str>) -> bool {
     }
 
     let mut command = launcher(&exe, &child_args);
-    let _ = command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
+    let status = command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
 
     let saved = std::fs::read_to_string(&result_file).map(|s| s.trim() == "saved").unwrap_or(false);
     let _ = std::fs::remove_file(&result_file);
-    saved
+    match status {
+        Err(e) => Err(failed(format!("{}: {e}", command.get_program().to_string_lossy()))),
+        Ok(status) if !status.success() && !saved => Err(failed(status.to_string())),
+        Ok(_) => Ok(saved),
+    }
 }
 
 /// Inside a macOS .app, launch through LaunchServices (`open -W`) so the window gets

@@ -3,8 +3,8 @@
 //! quits, or at local midnight, whichever comes first. It lives only in this process's memory:
 //! there is no file or flag another process (an agent) could write to skip it.
 //!
-//! macOS only for now. On Windows `authenticate` lets the reveal through (documented in
-//! SECURITY.md as open).
+//! macOS only for now. Elsewhere `authenticate` always refuses, so reveal and share are not
+//! available there until the platform's own check (Windows Hello) is wired in.
 
 use std::sync::Mutex;
 use std::time::SystemTime;
@@ -80,9 +80,21 @@ pub fn authenticate(reason: &str) -> bool {
     rx.recv().unwrap_or(false)
 }
 
+/// Refuses: there is no user-presence check on this platform yet.
 #[cfg(not(target_os = "macos"))]
 pub fn authenticate(_reason: &str) -> bool {
-    true
+    false
+}
+
+/// Whether this platform can confirm the user is present. Without it, reveal and share are off.
+pub const AVAILABLE: bool = cfg!(target_os = "macos");
+
+/// What the user sees where reveal and share are not available.
+pub fn unavailable_message() -> String {
+    keyfold_core::l10n::t(
+        "Mostrar y compartir valores aún no está disponible en esta plataforma: necesita confirmar que eres tú (Touch ID en macOS) y esa comprobación todavía no existe aquí.",
+        "Showing and sharing values is not available on this platform yet: it needs to confirm it is you (Touch ID on macOS), and that check does not exist here yet.",
+    )
 }
 
 #[cfg(test)]
@@ -133,6 +145,14 @@ mod tests {
         };
         assert_eq!(unlock.ensure(TODAY, ok), Ok(()));
         assert!(asked.get(), "after a cancel, the next reveal asks again");
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn without_a_presence_check_authenticate_refuses() {
+        assert!(!AVAILABLE);
+        assert!(!authenticate("test"));
+        assert_eq!(SessionUnlock::default().ensure(TODAY, || authenticate("test")), Err(Locked));
     }
 
     #[test]
